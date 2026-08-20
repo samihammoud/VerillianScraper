@@ -10,6 +10,8 @@ from src.services.tiktok_client import get_user_videos
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 
+#default to 10 videos c
+#cursor  allows pagination for more
 @router.get("/{handle}/videos")
 def list_account_videos(handle: str, count: int = 10, cursor: str = "0", db: Session = Depends(get_db)) -> dict:
     try:
@@ -20,4 +22,4 @@ def list_account_videos(handle: str, count: int = 10, cursor: str = "0", db: Ses
     account_data, posts_data = map_account_and_posts(raw)
     store_account_and_posts(db, account_data, posts_data)
 
-    return raw
+    return {"account": account_data, "posts": posts_data}
