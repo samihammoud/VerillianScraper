@@ -20,7 +20,7 @@ def map_account_and_posts(api_response: dict[str, Any]) -> tuple[dict[str, Any],
 
     posts_data = [
         {
-            "external_id": video["aweme_id"],
+            "external_id": video["video_id"],
             "caption": video.get("title"),
             "media_urls": {
                 "play": video.get("play"),
@@ -40,3 +40,25 @@ def map_account_and_posts(api_response: dict[str, Any]) -> tuple[dict[str, Any],
     ]
 
     return account_data, posts_data
+
+
+def map_comments(api_response: dict[str, Any]) -> dict[str, Any]:
+    data = api_response.get("data", {})
+    comments = data.get("comments") or []
+
+    return {
+        "total": data.get("total"),
+        "comments": [
+            {
+                "id": comment["id"],
+                "text": comment.get("text"),
+                "likes": comment.get("digg_count"),
+                "reply_count": comment.get("reply_total"),
+                "posted_at": datetime.fromtimestamp(comment["create_time"], tz=timezone.utc).isoformat()
+                if comment.get("create_time")
+                else None,
+                "author": comment.get("user", {}).get("unique_id"),
+            }
+            for comment in comments
+        ],
+    }

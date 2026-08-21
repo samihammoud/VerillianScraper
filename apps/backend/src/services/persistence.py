@@ -8,6 +8,18 @@ from sqlalchemy.orm import Session
 from src.db.models import Account, Post
 
 
+def get_existing_post_external_ids(db: Session, platform: str, account_external_id: str) -> set[str]:
+    """External IDs already stored for this account — used to skip comment fetches for posts we already have."""
+    account_id = db.execute(
+        select(Account.id).where(Account.platform == platform, Account.external_id == account_external_id)
+    ).scalar_one_or_none()
+
+    if account_id is None:
+        return set()
+
+    return set(db.execute(select(Post.external_id).where(Post.account_id == account_id)).scalars().all())
+
+
 def store_account_and_posts(
     db: Session, account_data: dict[str, Any], posts_data: list[dict[str, Any]]
 ) -> UUID | None:
