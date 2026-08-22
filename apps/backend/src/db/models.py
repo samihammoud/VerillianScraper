@@ -2,7 +2,7 @@ import datetime
 import uuid
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ARRAY, ForeignKey, String, UniqueConstraint
+from sqlalchemy import ARRAY, ForeignKey, Float, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,6 +37,13 @@ class Post(Base):
     shares: Mapped[int | None] = mapped_column(nullable=True)
     views: Mapped[int | None] = mapped_column(nullable=True)
 
+    # Visual modality: thumbnail is the frame we describe, description is reused across
+    # re-routes since it's a property of the post, not of any particular routing run.
+    thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    visual_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    visual_model: Mapped[str | None] = mapped_column(String, nullable=True)
+    visual_generated_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
+
     account: Mapped["Account"] = relationship(back_populates="posts")
 
 
@@ -57,7 +64,7 @@ class World(Base):
 
 
 class WorldPost(Base):
-    """Schema created now. Rows only get inserted during routing (later phase) — do not populate yet."""
+    """One row per routed post — a post's embedding plus which world it was assigned to."""
 
     __tablename__ = "world_posts"
     __table_args__ = {"schema": "topology"}
@@ -69,3 +76,10 @@ class WorldPost(Base):
     embedding: Mapped[list[float]] = mapped_column(Vector(1536))
     engagement: Mapped[float | None] = mapped_column(nullable=True)
     posted_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
+
+    # blob_text is the exact string that was embedded — can't be rebuilt later since
+    # comments keep accruing after the scrape. cosine/margin: all 8 cosines are already
+    # computed for the argmax, margin is what the (future) abstain threshold keys off.
+    blob_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cosine: Mapped[float | None] = mapped_column(Float, nullable=True)
+    margin: Mapped[float | None] = mapped_column(Float, nullable=True)

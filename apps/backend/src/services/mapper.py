@@ -22,6 +22,7 @@ def map_account_and_posts(api_response: dict[str, Any]) -> tuple[dict[str, Any],
         {
             "external_id": video["video_id"],
             "caption": video.get("title"),
+            "thumbnail_url": video.get("cover"),
             "media_urls": {
                 "play": video.get("play"),
                 "wmplay": video.get("wmplay"),
