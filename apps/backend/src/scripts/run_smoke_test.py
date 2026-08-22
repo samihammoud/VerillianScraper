@@ -43,6 +43,7 @@ CSV_BASE_COLUMNS = [
     "caption",
     "world",
     "cosine",
+    "runner_up_world",
     "margin",
 ]
 CSV_TAIL_COLUMNS = [
@@ -113,7 +114,9 @@ def _route_all(db) -> list[dict]:
         account = post.account
         comments_list = (post.comments or {}).get("comments", [])
 
-        winning_world_id, post_vec, best_sim, blob_text, margin = route_post(post, worlds)
+        winning_world_id, post_vec, best_sim, blob_text, margin, runner_up_id, _runner_up_sim = route_post(
+            post, worlds
+        )
         engagement = (post.likes or 0) + 3 * _comment_count(post) + 5 * (post.shares or 0)
         persist_routing(db, post, account, winning_world_id, post_vec, engagement, blob_text, best_sim, margin)
 
@@ -129,6 +132,7 @@ def _route_all(db) -> list[dict]:
             "caption": post.caption,
             "world": world_names[winning_world_id],
             "cosine": best_sim,
+            "runner_up_world": world_names.get(runner_up_id),
             "margin": margin,
             "visual_ok": visual_ok,
             "products_none_visible": products_none_visible,
@@ -193,7 +197,10 @@ def _print_summary(rows: list[dict]) -> None:
 
     print("\n5 lowest-margin rows:")
     for row in sorted(rows, key=lambda r: r["margin"])[:5]:
-        print(f"  margin={row['margin']:.4f} {row['handle']} | {(row['caption'] or '')[:50]!r} -> {row['world']}")
+        print(
+            f"  margin={row['margin']:.4f} {row['handle']} | {(row['caption'] or '')[:50]!r} "
+            f"-> {row['world']} (runner-up: {row['runner_up_world']})"
+        )
 
 
 def main() -> None:

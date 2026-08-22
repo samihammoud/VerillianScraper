@@ -31,7 +31,9 @@ def run_routing(db) -> None:
         account = db.get(Account, post.account_id)
         engagement = (post.likes or 0) + 3 * _comment_count(post) + 5 * (post.shares or 0)
 
-        winning_world_id, post_vec, best_sim, blob_text, margin = route_post(post, worlds)
+        winning_world_id, post_vec, best_sim, blob_text, margin, _runner_up_id, _runner_up_sim = route_post(
+            post, worlds
+        )
         persist_routing(db, post, account, winning_world_id, post_vec, engagement, blob_text, best_sim, margin)
 
         print(
