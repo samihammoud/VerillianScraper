@@ -21,12 +21,13 @@ CAPTION_TOKEN_BUDGET = 40
 COMMENTS_TOKEN_BUDGET = 150
 PER_COMMENT_TOKEN_BUDGET = 20
 TOP_N_COMMENTS = 8
-MIN_COMMENT_CHARS = 8  # drops "1st", "lol", bare reactions
+MIN_COMMENT_CHARS = 15  # drops "1st", "lol", bare reactions
+MIN_ALPHA_RATIO = 0.5  # drops emoji walls
 
 _ALPHA_RE = re.compile(r"[A-Za-z]")
 
 
-def _token_count(text: str) -> int:
+def token_count(text: str) -> int:
     return len(_ENCODING.encode(text))
 
 
@@ -43,10 +44,16 @@ def _is_low_signal(text: str) -> bool:
     if len(stripped) < MIN_COMMENT_CHARS:
         return True
     alpha_chars = len(_ALPHA_RE.findall(stripped))
-    return alpha_chars < len(stripped) * 0.4
+    return alpha_chars < len(stripped) * MIN_ALPHA_RATIO
 
 
-def _assemble_comments_section(comments: list[dict]) -> str:
+def select_comments(comments: list[dict]) -> list[str]:
+    """Top N by engagement, filtered, truncated, budget-accumulated.
+
+    Uses `continue` rather than `break` on hitting the per-comment budget: one
+    early comment that doesn't fit shouldn't stop shorter survivors behind it
+    from being considered.
+    """
     top = sorted(comments, key=lambda c: c.get("likes") or 0, reverse=True)[:TOP_N_COMMENTS]
     survivors = [c.get("text") or "" for c in top if not _is_low_signal(c.get("text") or "")]
 
@@ -54,13 +61,13 @@ def _assemble_comments_section(comments: list[dict]) -> str:
     used_tokens = 0
     for text in survivors:
         truncated = _truncate(text, PER_COMMENT_TOKEN_BUDGET)
-        tokens = _token_count(truncated)
+        tokens = token_count(truncated)
         if used_tokens + tokens > COMMENTS_TOKEN_BUDGET:
-            break
+            continue
         kept.append(truncated)
         used_tokens += tokens
 
-    return " | ".join(kept)
+    return kept
 
 
 def assemble_blob(caption: str | None, comments: list[dict], visual_description: str | None) -> str:
@@ -80,8 +87,8 @@ def assemble_blob(caption: str | None, comments: list[dict], visual_description:
         cap = _truncate(caption.strip(), CAPTION_TOKEN_BUDGET)
         lines.append(f"Caption: {cap}")
 
-    comments_section = _assemble_comments_section(comments)
-    if comments_section:
-        lines.append(f"Comments: {comments_section}")
+    kept_comments = select_comments(comments)
+    if kept_comments:
+        lines.append(f"Comments: {' | '.join(kept_comments)}")
 
     return "\n".join(lines)

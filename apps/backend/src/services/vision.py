@@ -54,7 +54,9 @@ def describe_thumbnail(thumbnail_url: str) -> str | None:
     """Return a VLM description of the thumbnail, or None if it couldn't be generated."""
     for attempt in range(MAX_ATTEMPTS):
         try:
-            image_bytes = httpx.get(thumbnail_url, timeout=30.0).content
+            image_response = httpx.get(thumbnail_url, timeout=30.0)
+            image_response.raise_for_status()
+            image_bytes = image_response.content
             response = _client.models.generate_content(
                 model=MODEL,
                 contents=[

@@ -36,6 +36,9 @@ def map_account_and_posts(api_response: dict[str, Any]) -> tuple[dict[str, Any],
             "comments": None,
             "shares": video.get("share_count"),
             "views": video.get("play_count"),
+            "visual_description": None,
+            "visual_model": None,
+            "visual_generated_at": None,
         }
         for video in videos
     ]
