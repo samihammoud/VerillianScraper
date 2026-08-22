@@ -43,8 +43,6 @@ CSV_BASE_COLUMNS = [
     "caption",
     "world",
     "cosine",
-    "runner_up_world",
-    "runner_up_cosine",
     "margin",
 ]
 CSV_TAIL_COLUMNS = [
@@ -115,12 +113,9 @@ def _route_all(db) -> list[dict]:
         account = post.account
         comments_list = (post.comments or {}).get("comments", [])
 
-        winning_world_id, post_vec, best_sim, blob_text, margin, sims = route_post(post, worlds)
+        winning_world_id, post_vec, best_sim, blob_text, margin = route_post(post, worlds)
         engagement = (post.likes or 0) + 3 * _comment_count(post) + 5 * (post.shares or 0)
         persist_routing(db, post, account, winning_world_id, post_vec, engagement, blob_text, best_sim, margin)
-
-        sims_by_id = dict(sims)
-        runner_up_id, runner_up_cosine = sims[1] if len(sims) > 1 else (None, None)
 
         visual_ok = post.visual_description is not None
         products_none_visible = visual_ok and "none visible" in (post.visual_description or "").lower()
@@ -134,8 +129,6 @@ def _route_all(db) -> list[dict]:
             "caption": post.caption,
             "world": world_names[winning_world_id],
             "cosine": best_sim,
-            "runner_up_world": world_names.get(runner_up_id),
-            "runner_up_cosine": runner_up_cosine,
             "margin": margin,
             "visual_ok": visual_ok,
             "products_none_visible": products_none_visible,
@@ -145,22 +138,19 @@ def _route_all(db) -> list[dict]:
             "blob_tokens": token_count(blob_text),
             "blob_text": blob_text,
         }
-        for world in worlds:
-            row[f"cos_{world.slug.replace('-', '_')}"] = sims_by_id.get(world.id)
-
         rows.append(row)
 
-    return rows, [f"cos_{world.slug.replace('-', '_')}" for world in worlds]
+    return rows
 
 
-def _write_csv(rows: list[dict], world_columns: list[str]) -> Path:
+def _write_csv(rows: list[dict]) -> Path:
     rows = sorted(rows, key=lambda r: r["margin"])
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     path = OUT_DIR / f"smoke_test_{timestamp}.csv"
 
-    fieldnames = CSV_BASE_COLUMNS + world_columns + CSV_TAIL_COLUMNS
+    fieldnames = CSV_BASE_COLUMNS + CSV_TAIL_COLUMNS
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -203,10 +193,7 @@ def _print_summary(rows: list[dict]) -> None:
 
     print("\n5 lowest-margin rows:")
     for row in sorted(rows, key=lambda r: r["margin"])[:5]:
-        print(
-            f"  margin={row['margin']:.4f} {row['handle']} | {(row['caption'] or '')[:50]!r} "
-            f"-> {row['world']} (runner-up: {row['runner_up_world']})"
-        )
+        print(f"  margin={row['margin']:.4f} {row['handle']} | {(row['caption'] or '')[:50]!r} -> {row['world']}")
 
 
 def main() -> None:
@@ -215,11 +202,11 @@ def main() -> None:
     db = SessionLocal()
     try:
         _ingest_all(db)
-        rows, world_columns = _route_all(db)
+        rows = _route_all(db)
     finally:
         db.close()
 
-    path = _write_csv(rows, world_columns)
+    path = _write_csv(rows)
     print(f"\nWrote {len(rows)} rows to {path}")
 
     _print_summary(rows)

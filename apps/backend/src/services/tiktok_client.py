@@ -33,7 +33,7 @@ def get_user_videos(unique_id: str, count: int = 10, cursor: str = "0") -> dict:
     return response.json()
 
 
-def get_comment_list(unique_id: str, video_id: str, count: int = 20, cursor: str = "0") -> dict:
+def get_comment_list(unique_id: str, video_id: str, count: int = 10, cursor: str = "0") -> dict:
     """Fetch top-level comments for a single video via RapidAPI."""
     video_url = f"https://www.tiktok.com/@{unique_id}/video/{video_id}"
     response = httpx.get(

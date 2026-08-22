@@ -14,9 +14,7 @@ from src.services.blob import assemble_blob
 from src.services.embeddings import embed
 
 
-def route_post(
-    post: Post, worlds: list[World]
-) -> tuple[uuid.UUID, list[float], float, str, float, list[tuple[uuid.UUID, float]]]:
+def route_post(post: Post, worlds: list[World]) -> tuple[uuid.UUID, list[float], float, str, float]:
     # 1. Assemble the blob — visual description + caption + top comments, budgeted
     comments = (post.comments or {}).get("comments", [])
     text_blob = assemble_blob(post.caption, comments, post.visual_description)
@@ -31,15 +29,14 @@ def route_post(
         cos_sim = np.dot(post_vec, world_vec) / (np.linalg.norm(post_vec) * np.linalg.norm(world_vec))
         sims.append((world.id, float(cos_sim)))
 
-    # 4. Argmax wins; margin vs. runner-up is free since all 8 are already computed —
+    # 4. Argmax wins; margin vs. runner-up is free since both are already computed —
     #    kept for the abstain threshold, chosen later once there's labeled data.
-    #    Full sorted list is returned too, e.g. for a per-world CSV column.
     sims.sort(key=lambda pair: pair[1], reverse=True)
     winning_world_id, best_sim = sims[0]
     runner_up_sim = sims[1][1] if len(sims) > 1 else 0.0
     margin = best_sim - runner_up_sim
 
-    return winning_world_id, post_vec.tolist(), best_sim, text_blob, margin, sims
+    return winning_world_id, post_vec.tolist(), best_sim, text_blob, margin
 
 
 def persist_routing(
