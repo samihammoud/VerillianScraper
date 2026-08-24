@@ -1,70 +1,103 @@
-"""Ingests one account end to end: scrape -> map -> comments -> visual descriptions -> persist.
+"""Stage 1 of the bulk pipeline: video list + cover bytes. Nothing else.
 
-Shared by GET /accounts/{handle}/videos, POST /accounts/{handle}/ingest-and-route, and
-src/scripts/run_smoke_test.py — the ingest body used to live inside the route handler,
-which meant it couldn't run without a server and couldn't be reused. It lives here once now.
+Comments and visual descriptions are backfilled separately by enrich.py (stage
+2), on their own schedule and their own retry budget. This split exists
+because nothing was durable until everything was: the old coupled ingest built
+each post as an in-memory dict, stuffed comments and a VLM description into
+it, and only then called a single insert. A crash during the VLM pass lost the
+entire account's scrape — including the video-list call already paid for.
 
-Thumbnails are described here, synchronously with the scrape, not later in routing:
-TikTok's cover URLs are signed and expire within hours, so describing them seconds
-after the scrape (rather than whenever a routing batch job happens to run) removes
-that expiry risk entirely.
+Cover bytes are downloaded here, synchronously with the scrape, because the
+*signed URL* is what expires, not the underlying frame. Downloading it now
+converts a deadline on the whole pipeline into a deadline on one cheap CDN GET
+that doesn't touch the RapidAPI quota.
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
 import logging
+import uuid
 from uuid import UUID
 
 import httpx
 from sqlalchemy.orm import Session
 
-from src.services.mapper import map_account_and_posts, map_comments
+from src.services.cover_storage import store_cover
+from src.services.mapper import map_account_and_posts
 from src.services.persistence import get_existing_post_external_ids, store_account_and_posts
-from src.services.tiktok_client import get_comment_list, get_user_videos
-from src.services.vision import MODEL as VISION_MODEL
-from src.services.vision import describe_thumbnail
+from src.services.tiktok_client import get_user_videos
 
 logger = logging.getLogger(__name__)
 
-COMMENT_FETCH_WORKERS = 5
-THUMBNAIL_FETCH_WORKERS = 5
+COVER_FETCH_TIMEOUT = 15.0
+COVER_FETCH_ATTEMPTS = 2  # a cheap CDN GET, not RapidAPI/Gemini quota — light retry is free
+MAX_PAGES = 50  # safety cap against a pagination loop that never terminates
 
 
-def _fetch_comments(handle: str, video_id: str) -> dict | None:
-    try:
-        return map_comments(get_comment_list(handle, video_id))
-    except httpx.HTTPStatusError as exc:
-        logger.warning("comment fetch failed for video_id=%s: %s", video_id, exc)
-        return None
+def _fetch_cover(post: dict) -> None:
+    """Downloads + stores the cover image. Always leaves cover_status terminal.
+
+    Never rolls back the post over a missing cover: per-account rollback kills
+    every good post over one bad cover; per-post rollback silently drops rows
+    and hides the drop rate, and contradicts the existing rule that a post
+    with no visual signal must still route.
+    """
+    thumbnail_url = post.get("thumbnail_url")
+    if not thumbnail_url:
+        post["cover_status"] = "missing"
+        return
+
+    for attempt in range(COVER_FETCH_ATTEMPTS):
+        try:
+            response = httpx.get(thumbnail_url, timeout=COVER_FETCH_TIMEOUT)
+            response.raise_for_status()
+            post["cover_key"] = store_cover(post["id"], response.content)
+            post["cover_status"] = "stored"
+            return
+        except Exception as exc:
+            if attempt == COVER_FETCH_ATTEMPTS - 1:
+                logger.warning("cover fetch failed for post=%s: %s", post["id"], exc)
+
+    post["cover_status"] = "missing"
 
 
 def ingest_account(db: Session, handle: str, count: int) -> UUID | None:
-    """Fetch an account's videos, their comments, and their thumbnail descriptions;
-    persist all of it. Returns the account id."""
-    raw = get_user_videos(handle, count=count)
-    account_data, posts_data = map_account_and_posts(raw)
+    """Fetch an account's video list (paginated) and cover bytes only.
+
+    No comments, no VLM — see enrich.py. Returns the account id.
+    """
+    account_data: dict = {}
+    posts_data: list[dict] = []
+    cursor = "0"
+
+    for _ in range(MAX_PAGES):
+        if len(posts_data) >= count:
+            break
+
+        raw = get_user_videos(handle, count=count - len(posts_data), cursor=cursor)
+        page_account, page_posts = map_account_and_posts(raw)
+        if not page_account:
+            break
+
+        account_data = page_account
+        posts_data.extend(page_posts)
+
+        data = raw.get("data", {})
+        if not data.get("hasMore") or not page_posts:
+            break
+        cursor = data.get("cursor", cursor)
 
     if not account_data:
         return None
 
+    # Every post dict needs an id up front (not just new ones) so the bulk insert
+    # sees a uniform key set across all rows — already-existing posts' ids are
+    # simply discarded by on_conflict_do_nothing.
+    for post in posts_data:
+        post["id"] = uuid.uuid4()
+
     existing_ids = get_existing_post_external_ids(db, account_data["platform"], account_data["external_id"])
     new_posts = [post for post in posts_data if post["external_id"] not in existing_ids]
 
-    if new_posts:
-        with ThreadPoolExecutor(max_workers=COMMENT_FETCH_WORKERS) as pool:
-            futures = {pool.submit(_fetch_comments, handle, post["external_id"]): post for post in new_posts}
-            for future in as_completed(futures):
-                futures[future]["comments"] = future.result()
-
-        thumbnail_posts = [post for post in new_posts if post.get("thumbnail_url")]
-        with ThreadPoolExecutor(max_workers=THUMBNAIL_FETCH_WORKERS) as pool:
-            futures = {pool.submit(describe_thumbnail, post["thumbnail_url"]): post for post in thumbnail_posts}
-            for future in as_completed(futures):
-                post = futures[future]
-                post["visual_description"] = future.result()
-                post["visual_model"] = VISION_MODEL
-                post["visual_generated_at"] = datetime.now(timezone.utc)
-                # posts without a thumbnail_url stay all-None — nothing to describe,
-                # distinct from a post whose describe attempt failed.
+    for post in new_posts:
+        _fetch_cover(post)
 
     return store_account_and_posts(db, account_data, posts_data)

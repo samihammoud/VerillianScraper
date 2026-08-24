@@ -1,11 +1,13 @@
-"""Describes a post's thumbnail with a VLM, for the visual modality routing signal.
+"""Describes a post's cover image with a VLM, for the visual modality routing signal.
 
-The thumbnail/cover URL from the scrape is treated as the frame — no video
-download, no ffmpeg. Descriptions are written for retrieval (product/setting/
-action/category cues), not for a person, and temperature 0 for reproducibility.
+Takes already-downloaded bytes (see cover_storage.py), not a URL: retrying a
+Gemini failure must never re-download the image — the whole point of storing
+cover bytes at ingest time is that a Gemini outage or 429 costs nothing but
+the Gemini call itself. Descriptions are written for retrieval (product/
+setting/action/category cues), not for a person, and temperature 0 for
+reproducibility.
 """
 
-import httpx
 from google import genai
 from google.genai import types
 
@@ -50,13 +52,10 @@ identity, describe the visible physical form instead of guessing a name.
 - Total output under 120 words."""
 
 
-def describe_thumbnail(thumbnail_url: str) -> str | None:
-    """Return a VLM description of the thumbnail, or None if it couldn't be generated."""
+def describe_image(image_bytes: bytes) -> str | None:
+    """Return a VLM description of an already-downloaded image, or None on failure."""
     for attempt in range(MAX_ATTEMPTS):
         try:
-            image_response = httpx.get(thumbnail_url, timeout=30.0)
-            image_response.raise_for_status()
-            image_bytes = image_response.content
             response = _client.models.generate_content(
                 model=MODEL,
                 contents=[

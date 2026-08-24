@@ -6,10 +6,13 @@ This is a smoke test, not an eval. There are no ground-truth labels and no accur
 number to report. The output is a spreadsheet a human reads to answer: is the
 pipeline wired correctly, and does routing look sane. No scoring, thresholds, or
 automated pass/fail.
+
+Fixed-roster reproducibility harness, not the bulk path — composes the same three
+stages (ingest, enrich, route) the bulk pipeline uses, just driven synchronously
+against 4 accounts instead of via the independently-scheduled make targets.
 """
 
 import csv
-import statistics
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +23,7 @@ from sqlalchemy import select
 from src.db.models import Post, World
 from src.db.session import SessionLocal
 from src.services.blob import select_comments, token_count
+from src.services.enrich import enrich_comments, enrich_visual
 from src.services.ingest import ingest_account
 from src.services.routing import persist_routing, route_post
 from src.services.tiktok_client import get_user_videos
@@ -47,6 +51,7 @@ CSV_BASE_COLUMNS = [
     "margin",
 ]
 CSV_TAIL_COLUMNS = [
+    "cover_status",
     "visual_ok",
     "products_none_visible",
     "visual_description",
@@ -73,14 +78,8 @@ def _verify_handles(handles: list[str]) -> None:
         print(f"  ok: @{handle}")
 
 
-def _comment_count(post: Post) -> int:
-    if not post.comments:
-        return 0
-    return len(post.comments.get("comments", []))
-
-
 def _ingest_all(db) -> None:
-    print("\nIngesting...")
+    print("\nIngesting (stage 1: video list + cover bytes)...")
     for handle in TEST_ACCOUNTS:
         account_id = ingest_account(db, handle, POSTS_PER_ACCOUNT)
         if account_id is None:
@@ -88,22 +87,23 @@ def _ingest_all(db) -> None:
             continue
 
         posts = db.execute(select(Post).where(Post.account_id == account_id)).scalars().all()
-        n_posts = len(posts)
-        n_with_comments = sum(1 for p in posts if p.comments is not None)
-        n_described = sum(1 for p in posts if p.visual_description is not None)
-        n_failed = sum(
-            1
-            for p in posts
-            if p.thumbnail_url and p.visual_generated_at is not None and p.visual_description is None
-        )
-        print(
-            f"{handle}: posts_fetched={n_posts} comments_fetched={n_with_comments} "
-            f"thumbnails_described={n_described} thumbnails_failed={n_failed}"
-        )
+        n_stored = sum(1 for p in posts if p.cover_status == "stored")
+        n_missing = sum(1 for p in posts if p.cover_status == "missing")
+        print(f"{handle}: posts_fetched={len(posts)} covers_stored={n_stored} covers_missing={n_missing}")
+
+
+def _enrich_all() -> None:
+    print("\nEnriching (stage 2: comments + visual descriptions)...")
+    while True:
+        n_comments = enrich_comments()
+        n_visual = enrich_visual()
+        print(f"  comments processed: {n_comments}, visual processed: {n_visual}")
+        if n_comments == 0 and n_visual == 0:
+            break
 
 
 def _route_all(db) -> list[dict]:
-    print("\nRouting...")
+    print("\nRouting (stage 3)...")
     worlds = db.execute(select(World).order_by(World.slug)).scalars().all()  # load once, not per-post
     world_names = {world.id: world.name for world in worlds}
 
@@ -117,8 +117,7 @@ def _route_all(db) -> list[dict]:
         winning_world_id, post_vec, best_sim, blob_text, margin, runner_up_id, _runner_up_sim = route_post(
             post, worlds
         )
-        engagement = (post.likes or 0) + 3 * _comment_count(post) + 5 * (post.shares or 0)
-        persist_routing(db, post, account, winning_world_id, post_vec, engagement, blob_text, best_sim, margin)
+        persist_routing(db, post, winning_world_id, post_vec, blob_text, best_sim, margin)
 
         visual_ok = post.visual_description is not None
         products_none_visible = visual_ok and "none visible" in (post.visual_description or "").lower()
@@ -134,6 +133,7 @@ def _route_all(db) -> list[dict]:
             "cosine": best_sim,
             "runner_up_world": world_names.get(runner_up_id),
             "margin": margin,
+            "cover_status": post.cover_status,
             "visual_ok": visual_ok,
             "products_none_visible": products_none_visible,
             "visual_description": post.visual_description,
@@ -183,9 +183,11 @@ def _print_summary(rows: list[dict]) -> None:
         print(f"  {world}: {count}")
 
     n = len(rows)
+    n_covers_stored = sum(1 for r in rows if r["cover_status"] == "stored")
     n_visual_ok = sum(1 for r in rows if r["visual_ok"])
     n_products_none = sum(1 for r in rows if r["products_none_visible"])
-    print(f"\nvisual_ok rate: {n_visual_ok}/{n} ({n_visual_ok / n:.1%})")
+    print(f"\ncover coverage: {n_covers_stored}/{n} ({n_covers_stored / n:.1%})")
+    print(f"visual_ok rate: {n_visual_ok}/{n} ({n_visual_ok / n:.1%})")
     if n_visual_ok:
         print(f"products_none_visible rate (of visual_ok): {n_products_none}/{n_visual_ok} ({n_products_none / n_visual_ok:.1%})")
 
@@ -209,6 +211,13 @@ def main() -> None:
     db = SessionLocal()
     try:
         _ingest_all(db)
+    finally:
+        db.close()
+
+    _enrich_all()
+
+    db = SessionLocal()
+    try:
         rows = _route_all(db)
     finally:
         db.close()
