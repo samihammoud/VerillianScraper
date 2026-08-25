@@ -22,6 +22,7 @@ from sqlalchemy.dialects.postgresql import insert
 from src.db.models import Post, World, WorldPost
 from src.services.blob import assemble_blob
 from src.services.embeddings import embed, embed_batch
+from src.services.linalg import l2_normalize
 
 
 def route_post(post: Post, worlds: list[World]) -> tuple[uuid.UUID, list[float], float, str, float, uuid.UUID | None, float | None]:
@@ -92,8 +93,7 @@ def persist_routing(
 def normalized_world_matrix(worlds: list[World]) -> tuple[np.ndarray, list[uuid.UUID]]:
     """Stacks + L2-normalizes the world reference embeddings once, for vectorized scoring."""
     matrix = np.array([world.reference_embedding for world in worlds])  # (8, 1536)
-    norms = np.linalg.norm(matrix, axis=1, keepdims=True)
-    return matrix / norms, [world.id for world in worlds]
+    return l2_normalize(matrix), [world.id for world in worlds]
 
 
 def route_posts_batch(posts: list[Post], world_matrix: np.ndarray, world_ids: list[uuid.UUID]) -> list[dict]:
@@ -105,8 +105,7 @@ def route_posts_batch(posts: list[Post], world_matrix: np.ndarray, world_ids: li
     ]
 
     vectors = np.array(embed_batch(blobs))  # (N, 1536)
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-    normalized_vectors = vectors / norms
+    normalized_vectors = l2_normalize(vectors)
 
     scores = normalized_vectors @ world_matrix.T  # (N, 8) — every post's cosine vs. every world, one matmul
 
