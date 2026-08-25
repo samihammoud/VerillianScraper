@@ -1,0 +1,75 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+:root {
+  --bg: #f4f5f3;
+  --panel: #ffffff;
+  --panel-2: #fbfbfa;
+  --border: #dcdfd9;
+  --grid: #e3e6e0;
+  --text: #14171a;
+  --text-muted: #6b716b;
+  --text-dim: #9aa09a;
+  --accent: #2f6fed;
+  --accent-ink: #f4f5f3;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+  border: 2px solid var(--bg);
+}
+
+.topology-layout {
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  gap: 20px;
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .topology-layout {
+    grid-template-columns: 1fr;
+  }
+}

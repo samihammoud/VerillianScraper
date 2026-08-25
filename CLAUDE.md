@@ -14,9 +14,26 @@ make lint      # npm run lint --workspaces --if-present
 make clean     # remove node_modules and per-app node_modules/dist
 ```
 
-These `make` targets are thin wrappers around the equivalent root `npm run <script> --workspaces --if-present` commands in `package.json`.
+These `make` targets are thin wrappers around the equivalent root `npm run <script> --workspaces --if-present` commands in `package.json`. No individual app currently has its own `package.json`, build/test/lint scripts, so these remain no-ops for `apps/backend` until it defines them.
 
-No individual app currently has its own `package.json`, build/test/lint scripts, or dependency manifest (e.g. `apps/backend/testing.py` has no `pyproject.toml`/`requirements.txt` yet), so the commands above are no-ops until an app defines them. Set up each app's own tooling (and single-test invocation) as it's built out, and document it here once it exists.
+`apps/backend` is a Python/FastAPI app with its own `requirements.txt` and `.venv` (not an npm workspace member — see its `docker-compose.yml` for the local Postgres+pgvector container). Its own targets are added directly to the root `Makefile` rather than as workspace scripts:
+
+```bash
+make reset-data      # truncate accounts, posts, topology.world_posts (NOT topology.worlds)
+make reseed-worlds   # re-seed topology.worlds from scratch (deliberate — world UUIDs churn); follow with `make route`
+make route            # run_routing.py — route every post in the Account Store to a world
+make smoke-test       # run_smoke_test.py — ingest a fixed 4-account roster, route, dump a CSV to out/
+```
+
+Backend one-time setup:
+```bash
+cd apps/backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+docker compose up -d          # Postgres (pgvector) on localhost:5432
+alembic upgrade head
+uvicorn src.main:app --reload --port 8000
+```
 
 ## Architecture
 

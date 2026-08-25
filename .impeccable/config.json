@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "space grotesk",
+        "createdAt": "2026-08-25T20:51:12.077Z",
+        "reason": "pre-existing identity: font predates this redesign, brief scoped to layout/color/dimensionality only, not typography"
+      }
+    ]
+  }
+}
