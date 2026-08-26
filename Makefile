@@ -1,4 +1,4 @@
-.PHONY: install build test lint clean reset-data reseed-worlds ingest enrich route smoke-test analyze ui
+.PHONY: install build test lint clean reset-data reseed-worlds ingest enrich route smoke-test analyze ui serve dev
 
 BACKEND := apps/backend
 PY := $(BACKEND)/.venv/bin/python
@@ -56,3 +56,10 @@ analyze:
 
 ui:
 	cd apps/ui && npm run dev
+
+serve:
+	cd $(BACKEND) && .venv/bin/uvicorn src.main:app --reload --port 8000
+
+# runs backend + ui together; Ctrl-C kills both
+dev:
+	$(MAKE) -j2 serve ui

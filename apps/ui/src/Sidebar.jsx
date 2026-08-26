@@ -4,10 +4,9 @@ export default function Sidebar({ worlds, counts, colorByWorldId, hoveredWorldId
   return (
     <div
       style={{
-        background: "var(--panel)",
-        border: "1px solid var(--border)",
-        borderRadius: 4,
+        flex: "0 0 260px",
         padding: 16,
+        overflowY: "auto",
       }}
     >
       <div className="mono" style={{ fontSize: 10, color: "var(--text-dim)", letterSpacing: 1, marginBottom: 12 }}>
