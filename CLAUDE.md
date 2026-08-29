@@ -29,7 +29,7 @@ No individual app currently has its own `package.json`, build/test/lint scripts,
 
 A scraper that crawls TikTok/Instagram accounts, classifies their posts into pre-defined semantic "worlds," and uses accumulated post data per world to surface product ideas — content that looks like it's trending or sellable, based on semantic clustering + engagement, eventually pitched via an LLM.
 
-### Target architecture (not all built yet — see "Current phase" below for what to actually work on)
+### Target architecture (mostly built — see "Current phase" below for what's left)
 
 **Two separate stores:**
 
@@ -53,30 +53,22 @@ explore-page API → candidate accounts → crawl_queue
 
 ### Explicitly out of scope, do not build preemptively
 
-Dedup/content-hash logic, frontier priority scoring, per-world API budgets, autonomous world creation, video-frame embeddings, product-pitch generation, the crawl queue, the explore-page endpoint. These belong to later phases and get added once the core loop is proven — building them now creates plumbing around decisions (world descriptions, embedding model choice, routing behavior) that haven't been validated yet.
+Dedup/content-hash logic, frontier priority scoring, per-world API budgets, autonomous world creation, video-frame embeddings, product-pitch generation, the explore-page endpoint. These belong to later phases and get added once the core loop is proven — building them now creates plumbing around decisions (routing behavior, pitch format) that haven't been validated yet.
 
-### Current phase: Phase 1 — scraper + raw storage only
+### Current status
 
-This is the only thing to build right now.
+Three pipeline stages are built and functional, each runnable independently via `make`:
 
-1. **RapidAPI wrapper — one function: fetch a single account's posts.**
-   - Input: account handle. Output: raw post data (caption, comments, engagement metrics) for that account's recent posts.
-   - Hardcode a known test account handle. No queue, no explore-page integration — that's a later phase.
-   - Keep this isolated and testable: call it directly, inspect the raw response, confirm the shape before touching a database.
+- **`make crawl`** (`apps/backend/src/services/crawl.py`) — cycles pending `crawl_queries` for a world: search API → candidate handles → ingest posts+videos per account (Account Store) → VLM visual-description pass → mark queries done → generate next round's queries. Queries are seeded via `make seed-crawl` (which requires `make seed-worlds` to have run first — `crawl_queries.world_slug` is a plain string, not an FK, so the ledger survives a worlds reseed; see comment at `models.py:88-91`).
+- **`make enrich`** (`apps/backend/src/services/enrich.py`) — fetches comments per post from RapidAPI, persists to `posts.comments` (JSONB).
+- **`make route`** (`apps/backend/src/services/routing.py`) — embeds posts (OpenAI `text-embedding-3-small`), cosine-matches against each world's `reference_embedding`, upserts into `topology.world_posts`.
 
-2. **Account Store schema + persistence.**
-   - `accounts`: platform, external_id, handle, follower_count.
-   - `posts`: account_id (FK), external_id, caption, media_urls, posted_at, likes, comments, shares, views.
-   - Raw data only — no embeddings, no world_id, no derived fields. Store exactly what the scraper returns.
+These three do not call each other — no stage chains into another. Comment enrichment and topology routing are not wired into the crawl loop.
 
-**Validation for Phase 1 completion:**
-
-- Scrape one real account end to end; confirm rows land correctly in both tables.
-- Specifically verify comments parse correctly — that field feeds the embedding step in a later phase, and a silent parsing gap here will otherwise surface as a confusing bug much later.
-- No embeddings, no world logic, no queue in this phase.
+**In progress:** swapping the crawl loop's VLM step from synchronous per-video calls (`vision.py`'s `describe_posts()`, a 5-way thread pool of blocking `generate_content()` calls) to a real batch flow — upload → JSONL → submit → poll → collect — per the stub comment at `vision.py:43-46`.
 
 ## Working rules
 
-- Don't build ahead into embeddings, world routing, or the crawl queue — those depend on decisions (world descriptions, embedding model) not yet finalized.
+- Don't build ahead into product-pitch generation or the explore-page endpoint — those depend on decisions not yet finalized.
 - Ask before assuming a RapidAPI provider/endpoint if one isn't already configured in this repo.
 - Keep the scraper wrapper as a standalone, directly-testable module — it should not require the database to be running to verify it works.
