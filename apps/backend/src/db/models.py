@@ -70,6 +70,11 @@ class Post(Base):
     visual_generated_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
     visual_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
+    # world_slug of the crawl_query that discovered this post's account, not a
+    # routing result — routing (topology.world_posts) can disagree with this.
+    # Kept for later comparison of query-intent vs. actual routed world.
+    discovered_by_world: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     account: Mapped["Account"] = relationship(back_populates="posts")
 
 
