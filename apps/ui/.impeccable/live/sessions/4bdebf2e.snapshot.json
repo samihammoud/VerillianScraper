@@ -1,0 +1,53 @@
+{
+  "id": "4bdebf2e",
+  "phase": "generating",
+  "pageUrl": "/",
+  "sourceFile": "src/App.jsx",
+  "previewFile": null,
+  "previewMode": null,
+  "expectedVariants": 3,
+  "arrivedVariants": 3,
+  "visibleVariant": 1,
+  "paramValues": {},
+  "pendingEventSeq": null,
+  "pendingEvent": null,
+  "deliveryLease": null,
+  "checkpointRevision": 15,
+  "browserCheckpointRevision": 15,
+  "publicationCheckpointRevision": 0,
+  "activeOwner": "9cf96732",
+  "sourceMarkers": {},
+  "fallbackMode": null,
+  "generationPhase": "generation_ready",
+  "generationCompletedAt": 1787702336862,
+  "generationTimings": {
+    "picked_up": {
+      "at": 1787702174321,
+      "durationMs": null
+    },
+    "scaffolding": {
+      "at": 1787702174322,
+      "durationMs": null
+    },
+    "scaffold_fallback": {
+      "at": 1787702174325,
+      "durationMs": null
+    },
+    "generation_ready": {
+      "at": 1787702174327,
+      "durationMs": null
+    }
+  },
+  "variantPlan": null,
+  "generationCanceled": false,
+  "generationCanceledAt": null,
+  "cancelReason": null,
+  "annotationArtifacts": [],
+  "mountedVariants": [],
+  "mountFailures": [],
+  "renderState": "pending",
+  "diagnostics": [],
+  "updatedAt": "2026-08-28T17:17:12.670Z",
+  "__journalBytes": 25944,
+  "__nextSeq": 19
+}

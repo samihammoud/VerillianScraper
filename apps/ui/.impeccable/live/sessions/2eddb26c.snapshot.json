@@ -1,0 +1,58 @@
+{
+  "id": "2eddb26c",
+  "phase": "agent_error",
+  "pageUrl": "/",
+  "sourceFile": null,
+  "previewFile": null,
+  "previewMode": null,
+  "expectedVariants": 3,
+  "arrivedVariants": 0,
+  "visibleVariant": 0,
+  "paramValues": {},
+  "pendingEventSeq": null,
+  "pendingEvent": null,
+  "deliveryLease": null,
+  "checkpointRevision": 1,
+  "browserCheckpointRevision": 1,
+  "publicationCheckpointRevision": 0,
+  "activeOwner": "e4c4882c",
+  "sourceMarkers": {},
+  "fallbackMode": null,
+  "generationPhase": "generation_ready",
+  "generationCompletedAt": null,
+  "generationTimings": {
+    "picked_up": {
+      "at": 1787702480862,
+      "durationMs": null
+    },
+    "scaffolding": {
+      "at": 1787702480863,
+      "durationMs": null
+    },
+    "scaffold_fallback": {
+      "at": 1787702480865,
+      "durationMs": null
+    },
+    "generation_ready": {
+      "at": 1787702480866,
+      "durationMs": null
+    }
+  },
+  "variantPlan": null,
+  "generationCanceled": false,
+  "generationCanceledAt": null,
+  "cancelReason": null,
+  "annotationArtifacts": [],
+  "mountedVariants": [],
+  "mountFailures": [],
+  "renderState": null,
+  "diagnostics": [
+    {
+      "error": "agent_error",
+      "message": "Canvas-rendered 3D scene has no DOM to swap live variants into — applied the weighting change directly to Scene.jsx (muted posts, brighter/bigger world basins, hover-highlight on individual posts)."
+    }
+  ],
+  "updatedAt": "2026-08-26T00:02:48.564Z",
+  "__journalBytes": 6130,
+  "__nextSeq": 10
+}

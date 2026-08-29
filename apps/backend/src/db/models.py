@@ -62,11 +62,42 @@ class Post(Base):
     cover_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_status: Mapped[str | None] = mapped_column(String, nullable=True)  # pending | stored | missing
     visual_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # vlm_json is the structured extraction; visual_description is a prose
+    # rendering of it (vision_schema.flatten_for_blob). Routing reads only the
+    # prose, so nothing downstream has to learn about this column.
+    vlm_json: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     visual_model: Mapped[str | None] = mapped_column(String, nullable=True)
     visual_generated_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
     visual_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     account: Mapped["Account"] = relationship(back_populates="posts")
+
+
+class CrawlQuery(Base):
+    """The crawl ledger: both the work list and the query generator's memory.
+
+    handles_found / new_handles are the only feedback the generator gets, so
+    they are written even when a query yields nothing — a zero row is the
+    strongest signal it has (that vein is dead, stop mining it).
+    """
+
+    __tablename__ = "crawl_queries"
+    __table_args__ = (Index("ix_crawl_queries_status", "world_slug", "status"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Slug rather than an FK to topology.worlds: reseed-worlds regenerates those
+    # UUIDs, and the ledger has to survive a reseed. Every read of this table is
+    # scoped by it — an unscoped ledger would hand one world's generator another
+    # world's history to reason from, which is exactly what the ledger is for.
+    world_slug: Mapped[str] = mapped_column(Text, nullable=False)
+    round_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    intent: Mapped[str] = mapped_column(Text, nullable=False)  # seed | exploit | explore
+    rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    handles_found: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    new_handles: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    status: Mapped[str] = mapped_column(Text, nullable=False)  # pending | done
+    executed_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
 
 
 class World(Base):

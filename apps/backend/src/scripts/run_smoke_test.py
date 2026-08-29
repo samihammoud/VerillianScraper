@@ -23,7 +23,8 @@ from sqlalchemy import select
 from src.db.models import Post, World
 from src.db.session import SessionLocal
 from src.services.blob import select_comments, token_count
-from src.services.enrich import enrich_comments, enrich_visual
+from src.services.enrich import enrich_comments
+from src.services.vision import describe_posts
 from src.services.ingest import ingest_account
 from src.services.routing import persist_routing, route_post
 from src.services.tiktok_client import get_user_videos
@@ -93,10 +94,10 @@ def _ingest_all(db) -> None:
 
 
 def _enrich_all() -> None:
-    print("\nEnriching (stage 2: comments + visual descriptions)...")
+    print("\nEnriching (stage 2: comments + video descriptions)...")
     while True:
         n_comments = enrich_comments()
-        n_visual = enrich_visual()
+        n_visual = describe_posts()
         print(f"  comments processed: {n_comments}, visual processed: {n_visual}")
         if n_comments == 0 and n_visual == 0:
             break

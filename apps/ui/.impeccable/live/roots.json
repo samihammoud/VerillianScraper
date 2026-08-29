@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "appRoot": "/Users/samihammoud/VerillianScraper/apps/ui",
+  "repoRoot": "/Users/samihammoud/VerillianScraper",
+  "contextRoot": "/Users/samihammoud/VerillianScraper/apps/ui",
+  "sessionRoot": "/Users/samihammoud/VerillianScraper/apps/ui/.impeccable/live",
+  "productPath": "/Users/samihammoud/VerillianScraper/apps/ui/PRODUCT.md",
+  "designPath": "/Users/samihammoud/VerillianScraper/apps/ui/DESIGN.md",
+  "resolvedFrom": "target:apps/ui"
+}

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "appRoot": "/Users/samihammoud/VerillianScraper/apps/ui",
+  "framework": "vite-generic",
+  "port": 8400,
+  "pid": 4626,
+  "recordedAt": "2026-08-25T23:54:51.933Z",
+  "artifacts": [
+    {
+      "kind": "patched",
+      "path": "index.html",
+      "patch": "live-tag",
+      "markers": [
+        "impeccable-live-start",
+        "data-impeccable-csp-original"
+      ]
+    }
+  ]
+}

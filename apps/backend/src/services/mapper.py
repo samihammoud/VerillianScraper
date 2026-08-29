@@ -1,11 +1,47 @@
-"""Maps raw RapidAPI TikTok responses into Account/Post persistence dicts."""
+"""Maps raw RapidAPI TikTok responses (tiktok-scraper7) into persistence dicts.
+
+The wire shape has changed twice now; the dicts returned here have not. Every
+downstream module keys off these exact keys, so this file is the only place
+that knows what the provider emits.
+
+Search and user-posts return the *same* envelope — `data.videos` with
+`data.cursor`/`data.hasMore` — which is why one mapper and one cursor helper
+serve both. Only the intent differs: search rows are read for author handles
+and nothing else, since ingest re-fetches each account properly.
+"""
 
 from datetime import datetime, timezone
 from typing import Any
 
 
+def _videos(api_response: dict[str, Any]) -> list[dict[str, Any]]:
+    return (api_response.get("data") or {}).get("videos") or []
+
+
+def _ts(value: Any) -> datetime | None:
+    try:
+        return datetime.fromtimestamp(int(value), tz=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def page_cursor(api_response: dict[str, Any]) -> tuple[bool, str]:
+    """(has_more, next_cursor) — identical for search and user posts."""
+    data = api_response.get("data") or {}
+    return bool(data.get("hasMore")), str(data.get("cursor", "0"))
+
+
+def search_handles(api_response: dict[str, Any]) -> list[str]:
+    """Distinct author handles from a search page, order preserved."""
+    seen: dict[str, None] = {}
+    for video in _videos(api_response):
+        if handle := (video.get("author") or {}).get("unique_id"):
+            seen.setdefault(handle)
+    return list(seen)
+
+
 def map_account_and_posts(api_response: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    videos = api_response.get("data", {}).get("videos", [])
+    videos = _videos(api_response)
 
     if not videos:
         return {}, []
@@ -15,6 +51,8 @@ def map_account_and_posts(api_response: dict[str, Any]) -> tuple[dict[str, Any],
         "platform": "tiktok",
         "external_id": author["id"],
         "handle": author["unique_id"],
+        # Not in this payload; /user/info has it, but that is a second billed
+        # call for a field nothing reads yet.
         "follower_count": None,
     }
 
@@ -24,14 +62,12 @@ def map_account_and_posts(api_response: dict[str, Any]) -> tuple[dict[str, Any],
             "caption": video.get("title"),
             "thumbnail_url": video.get("cover"),
             "media_urls": {
-                "play": video.get("play"),
+                "play": video.get("play"),  # no watermark; what the VLM sees
                 "wmplay": video.get("wmplay"),
                 "cover": video.get("cover"),
                 "origin_cover": video.get("origin_cover"),
             },
-            "posted_at": datetime.fromtimestamp(video["create_time"], tz=timezone.utc)
-            if video.get("create_time")
-            else None,
+            "posted_at": _ts(video.get("create_time")),
             "likes": video.get("digg_count"),
             "comments": None,
             "shares": video.get("share_count"),
@@ -39,6 +75,7 @@ def map_account_and_posts(api_response: dict[str, Any]) -> tuple[dict[str, Any],
             "visual_description": None,
             "visual_model": None,
             "visual_generated_at": None,
+            "vlm_json": None,
             "cover_key": None,
             "cover_status": "pending",
             "comment_attempts": 0,
@@ -51,7 +88,7 @@ def map_account_and_posts(api_response: dict[str, Any]) -> tuple[dict[str, Any],
 
 
 def map_comments(api_response: dict[str, Any]) -> dict[str, Any]:
-    data = api_response.get("data", {})
+    data = api_response.get("data") or {}
     comments = data.get("comments") or []
 
     return {
@@ -62,10 +99,8 @@ def map_comments(api_response: dict[str, Any]) -> dict[str, Any]:
                 "text": comment.get("text"),
                 "likes": comment.get("digg_count"),
                 "reply_count": comment.get("reply_total"),
-                "posted_at": datetime.fromtimestamp(comment["create_time"], tz=timezone.utc).isoformat()
-                if comment.get("create_time")
-                else None,
-                "author": comment.get("user", {}).get("unique_id"),
+                "posted_at": posted.isoformat() if (posted := _ts(comment.get("create_time"))) else None,
+                "author": (comment.get("user") or {}).get("unique_id"),
             }
             for comment in comments
         ],

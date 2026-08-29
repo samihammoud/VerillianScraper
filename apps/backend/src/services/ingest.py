@@ -21,15 +21,28 @@ import httpx
 from sqlalchemy.orm import Session
 
 from src.services.cover_storage import store_cover
-from src.services.mapper import map_account_and_posts
+from src.services.mapper import map_account_and_posts, page_cursor
 from src.services.persistence import get_existing_post_external_ids, store_account_and_posts
 from src.services.tiktok_client import get_user_videos
+from src.services.video_storage import store_video
 
 logger = logging.getLogger(__name__)
 
 COVER_FETCH_TIMEOUT = 15.0
 COVER_FETCH_ATTEMPTS = 2  # a cheap CDN GET, not RapidAPI/Gemini quota — light retry is free
+VIDEO_FETCH_TIMEOUT = 120.0
 MAX_PAGES = 50  # safety cap against a pagination loop that never terminates
+
+# TikTok's CDN rejects bare requests for playAddr. The referer/UA pair is a
+# calibration knob, not a constant — if downloads start 403ing, this is the
+# first thing to re-check against a live browser request.
+_VIDEO_HEADERS = {
+    "Referer": "https://www.tiktok.com/",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    ),
+}
 
 
 def _fetch_cover(post: dict) -> None:
@@ -59,6 +72,26 @@ def _fetch_cover(post: dict) -> None:
     post["cover_status"] = "missing"
 
 
+def _fetch_video(post: dict) -> None:
+    """Downloads the video bytes to disk. Same contract as _fetch_cover: log on
+    failure, never raise, never roll back the post.
+
+    Downloaded at ingest rather than at VLM time because the play URL is signed
+    and short-lived — by the time a batch runs, it's dead. A post with no video
+    file is simply skipped by the VLM claim query.
+    """
+    url = (post.get("media_urls") or {}).get("play")
+    if not url:
+        return
+
+    try:
+        response = httpx.get(url, headers=_VIDEO_HEADERS, timeout=VIDEO_FETCH_TIMEOUT, follow_redirects=True)
+        response.raise_for_status()
+        store_video(post["id"], response.content)
+    except Exception as exc:
+        logger.warning("video fetch failed for post=%s: %s", post["id"], exc)
+
+
 def ingest_account(db: Session, handle: str, count: int) -> UUID | None:
     """Fetch an account's video list (paginated) and cover bytes only.
 
@@ -80,10 +113,10 @@ def ingest_account(db: Session, handle: str, count: int) -> UUID | None:
         account_data = page_account
         posts_data.extend(page_posts)
 
-        data = raw.get("data", {})
-        if not data.get("hasMore") or not page_posts:
+        has_more, next_cursor = page_cursor(raw)
+        if not has_more or not page_posts:
             break
-        cursor = data.get("cursor", cursor)
+        cursor = next_cursor
 
     if not account_data:
         return None
@@ -99,5 +132,6 @@ def ingest_account(db: Session, handle: str, count: int) -> UUID | None:
 
     for post in new_posts:
         _fetch_cover(post)
+        _fetch_video(post)
 
     return store_account_and_posts(db, account_data, posts_data)
