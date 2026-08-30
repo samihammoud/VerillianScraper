@@ -8,8 +8,7 @@ a lowercase noun phrase of a stated word count rather than to a fixed list.
 The `description` strings are prompt text the model reads, not documentation.
 They carry the shape constraints and must go in verbatim.
 
-flatten_for_blob lives here, beside the schema, for the same reason
-parse_visual_description sits beside PROMPT: the renderer and the shape it
+flatten_for_blob lives here, beside the schema: the renderer and the shape it
 renders have to change together, and it is the only thing standing between the
 VLM output and routing.
 """

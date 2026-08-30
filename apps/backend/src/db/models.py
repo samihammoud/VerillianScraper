@@ -53,14 +53,16 @@ class Post(Base):
     views: Mapped[int | None] = mapped_column(nullable=True)
     comment_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
-    # Visual modality: thumbnail_url is the raw scraped URL (goes stale in hours);
-    # cover_key points at the durably-stored bytes (see cover_storage.py) that
-    # enrichment actually describes. visual_generated_at means "when it succeeded" —
-    # it is NOT stamped on failure, so a failed attempt can be retried up to
-    # visual_attempts < 3 rather than being silently permanent.
+    # Visual modality: thumbnail_url is the raw scraped URL (goes stale in hours),
+    # kept only for display. The VLM describes the full downloaded video (see
+    # video_storage.py), not a cover frame — cover_key/cover_status are legacy
+    # columns from when it did; nothing writes them anymore. visual_generated_at
+    # means "when it succeeded" — it is NOT stamped on failure, so a failed
+    # attempt can be retried up to visual_attempts < 3 rather than being
+    # silently permanent.
     thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_key: Mapped[str | None] = mapped_column(Text, nullable=True)
-    cover_status: Mapped[str | None] = mapped_column(String, nullable=True)  # pending | stored | missing
+    cover_status: Mapped[str | None] = mapped_column(String, nullable=True)  # legacy, unused
     visual_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # vlm_json is the structured extraction; visual_description is a prose
     # rendering of it (vision_schema.flatten_for_blob). Routing reads only the

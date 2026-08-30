@@ -48,7 +48,6 @@ CSV_BASE_COLUMNS = [
     "margin",
 ]
 CSV_TAIL_COLUMNS = [
-    "cover_status",
     "visual_ok",
     "products_none_visible",
     "visual_description",
@@ -76,7 +75,7 @@ def _verify_handles(handles: list[str]) -> None:
 
 
 def _ingest_all(db) -> None:
-    print("\nIngesting (stage 1: video list + cover bytes)...")
+    print("\nIngesting (stage 1: video list + video bytes)...")
     for handle in TEST_ACCOUNTS:
         account_id = ingest_account(db, handle, POSTS_PER_ACCOUNT)
         if account_id is None:
@@ -84,9 +83,7 @@ def _ingest_all(db) -> None:
             continue
 
         posts = db.execute(select(Post).where(Post.account_id == account_id)).scalars().all()
-        n_stored = sum(1 for p in posts if p.cover_status == "stored")
-        n_missing = sum(1 for p in posts if p.cover_status == "missing")
-        print(f"{handle}: posts_fetched={len(posts)} covers_stored={n_stored} covers_missing={n_missing}")
+        print(f"{handle}: posts_fetched={len(posts)}")
 
 
 def _enrich_all() -> None:
@@ -117,7 +114,7 @@ def _route_all(db) -> list[dict]:
         persist_routing(db, post, winning_world_id, post_vec, blob_text, best_sim, margin)
 
         visual_ok = post.visual_description is not None
-        products_none_visible = visual_ok and "none visible" in (post.visual_description or "").lower()
+        products_none_visible = visual_ok and not (post.vlm_json or {}).get("products")
 
         row = {
             "handle": account.handle,
@@ -130,7 +127,6 @@ def _route_all(db) -> list[dict]:
             "cosine": best_sim,
             "runner_up_world": world_names.get(runner_up_id),
             "margin": margin,
-            "cover_status": post.cover_status,
             "visual_ok": visual_ok,
             "products_none_visible": products_none_visible,
             "visual_description": post.visual_description,
@@ -169,11 +165,9 @@ def _print_summary(rows: list[dict]) -> None:
         print(f"  {world}: {count}")
 
     n = len(rows)
-    n_covers_stored = sum(1 for r in rows if r["cover_status"] == "stored")
     n_visual_ok = sum(1 for r in rows if r["visual_ok"])
     n_products_none = sum(1 for r in rows if r["products_none_visible"])
-    print(f"\ncover coverage: {n_covers_stored}/{n} ({n_covers_stored / n:.1%})")
-    print(f"visual_ok rate: {n_visual_ok}/{n} ({n_visual_ok / n:.1%})")
+    print(f"\nvisual_ok rate: {n_visual_ok}/{n} ({n_visual_ok / n:.1%})")
     if n_visual_ok:
         print(f"products_none_visible rate (of visual_ok): {n_products_none}/{n_visual_ok} ({n_products_none / n_visual_ok:.1%})")
 

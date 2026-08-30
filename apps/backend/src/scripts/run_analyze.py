@@ -25,16 +25,17 @@ from src.services.clustering import (
     cosine_similarity_matrix,
     label_cluster,
     off_diagonal_distribution,
+    product_names,
+    topics,
 )
 from src.services.csv_export import write_timestamped_csv
 from src.services.peaks import Peak, compute_metrics, find_peaks
-from src.services.vision import parse_visual_description
 
 CSV_COLUMNS = [
     "cluster_id",
     "cluster_size",
     "cluster_products",
-    "cluster_top_category_cues",
+    "cluster_top_topics",
     "post_external_id",
     "video_url",
     "posted_at",
@@ -42,7 +43,7 @@ CSV_COLUMNS = [
     "metric_log1p_views",
     "modified_z",
     "products",
-    "category_cues",
+    "topics",
     "caption",
 ]
 
@@ -62,7 +63,7 @@ def _resolve_account(db: Session, handle: str) -> Account:
     return accounts[0]
 
 
-def _cluster_peaks(clustered: list[Peak], embedding_by_post_id: dict, parsed_by_post_id: dict) -> tuple[dict, dict]:
+def _cluster_peaks(clustered: list[Peak], embedding_by_post_id: dict, vlm_json_by_post_id: dict) -> tuple[dict, dict]:
     """Clusters peaks with a routing embedding and labels each cluster.
 
     Returns (cluster_id_by_post_id, cluster_labels). Builds cluster membership
@@ -89,7 +90,7 @@ def _cluster_peaks(clustered: list[Peak], embedding_by_post_id: dict, parsed_by_
     }
     cluster_labels = {}
     for cluster_id, members in members_by_cluster.items():
-        label = label_cluster([parsed_by_post_id[post.id] for post in members])
+        label = label_cluster([vlm_json_by_post_id[post.id] for post in members])
         label["size"] = len(members)
         cluster_labels[cluster_id] = label
 
@@ -99,7 +100,7 @@ def _cluster_peaks(clustered: list[Peak], embedding_by_post_id: dict, parsed_by_
 def _build_rows(
     handle: str,
     peaks: list[Peak],
-    parsed_by_post_id: dict,
+    vlm_json_by_post_id: dict,
     cluster_id_by_post_id: dict,
     cluster_labels: dict,
 ) -> list[dict]:
@@ -107,15 +108,15 @@ def _build_rows(
     for post, metric, modified_z in peaks:
         cluster_id = cluster_id_by_post_id.get(post.id, "unclustered")
         label = cluster_labels.get(cluster_id, {})
-        own_fields = parsed_by_post_id[post.id]
+        own = vlm_json_by_post_id[post.id]
 
         rows.append(
             {
                 "cluster_id": cluster_id,
                 "cluster_size": label.get("size", 1),
                 "cluster_products": " | ".join(label.get("products", [])),
-                "cluster_top_category_cues": " | ".join(
-                    f"{cue} ({count})" for cue, count in label.get("top_category_cues", [])
+                "cluster_top_topics": " | ".join(
+                    f"{topic} ({count})" for topic, count in label.get("top_topics", [])
                 ),
                 "post_external_id": post.external_id,
                 "video_url": f"https://www.tiktok.com/@{handle}/video/{post.external_id}",
@@ -123,8 +124,8 @@ def _build_rows(
                 "views": post.views,
                 "metric_log1p_views": round(metric, 4),
                 "modified_z": round(modified_z, 4) if modified_z is not None else None,
-                "products": own_fields.get("PRODUCTS"),
-                "category_cues": own_fields.get("CATEGORY CUES"),
+                "products": ", ".join(product_names(own)),
+                "topics": ", ".join(topics(own)),
                 "caption": post.caption,
             }
         )
@@ -154,13 +155,12 @@ def run_analyze(handle: str):
             print("no peaks found")
             return _write_csv(handle, [])
 
-        # Parsed once per peak and reused everywhere the VLM fields are needed
-        # (cluster labeling, per-row CSV fields, the none-visible rate below)
-        # instead of re-parsing the same string in more than one place.
-        parsed_by_post_id = {peak.post.id: parse_visual_description(peak.post.visual_description) for peak in peaks}
+        # Grabbed once per peak and reused everywhere the VLM fields are needed
+        # (cluster labeling, per-row CSV fields, the none-visible rate below).
+        vlm_json_by_post_id = {peak.post.id: peak.post.vlm_json for peak in peaks}
 
-        n_none_visible = sum(1 for fields in parsed_by_post_id.values() if fields.get("PRODUCTS") == "none visible")
-        print(f"PRODUCTS: none visible rate among peaks: {n_none_visible}/{len(peaks)}")
+        n_none_visible = sum(1 for obj in vlm_json_by_post_id.values() if not product_names(obj))
+        print(f"products: none visible rate among peaks: {n_none_visible}/{len(peaks)}")
 
         peak_ids = [peak.post.id for peak in peaks]
         world_posts = db.execute(select(WorldPost).where(WorldPost.post_id.in_(peak_ids))).scalars().all()
@@ -170,16 +170,16 @@ def run_analyze(handle: str):
         n_unclustered = len(peaks) - len(clustered)
         print(f"{len(clustered)}/{len(peaks)} peaks have a routing embedding ({n_unclustered} not routed — run `make route`)")
 
-        cluster_id_by_post_id, cluster_labels = _cluster_peaks(clustered, embedding_by_post_id, parsed_by_post_id)
+        cluster_id_by_post_id, cluster_labels = _cluster_peaks(clustered, embedding_by_post_id, vlm_json_by_post_id)
 
-        rows = _build_rows(handle, peaks, parsed_by_post_id, cluster_id_by_post_id, cluster_labels)
+        rows = _build_rows(handle, peaks, vlm_json_by_post_id, cluster_id_by_post_id, cluster_labels)
         path = _write_csv(handle, rows)
         print(f"wrote {len(rows)} rows to {path}")
 
         print("\nClusters:")
         for cluster_id, label in sorted(cluster_labels.items(), key=lambda kv: -kv[1]["size"]):
             print(f"  cluster {cluster_id} ({label['size']} posts): {label['products']}")
-            print(f"    top category cues: {label['top_category_cues']}")
+            print(f"    top topics: {label['top_topics']}")
 
         return path
     finally:

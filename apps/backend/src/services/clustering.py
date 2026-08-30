@@ -66,25 +66,40 @@ def cluster_by_threshold(sim_matrix: np.ndarray, threshold: float = DEFAULT_SIMI
     return cluster_ids
 
 
-def label_cluster(parsed_fields: list[dict[str, str]]) -> dict:
-    """PRODUCTS: kept verbatim per post — the specific form-factor phrasing is
-    the useful part, not something to merge or normalize. CATEGORY CUES: split
-    on commas and counted across the cluster, since that vocabulary is written
-    to be comparable in a way PRODUCTS: isn't.
+def product_names(vlm_json: dict | None) -> list[str]:
+    """Renders each product as 'brand name' or bare name, verbatim per post —
+    the specific form-factor phrasing is the useful part, not something to
+    merge or normalize. Shared by label_cluster and per-row CSV fields so
+    there's one place that knows the vlm_json product shape."""
+    names = []
+    for product in (vlm_json or {}).get("products") or []:
+        name = (product or {}).get("name")
+        if not name:
+            continue
+        brand = product.get("brand")
+        names.append(f"{brand} {name}" if brand else name)
+    return names
 
-    Takes already-parsed fields (see vision.parse_visual_description) rather
-    than raw visual_description strings — callers that need both a per-post
-    view and a per-cluster label parse each post's text exactly once.
+
+def topics(vlm_json: dict | None) -> list[str]:
+    return [t.strip() for t in (vlm_json or {}).get("topics") or [] if t and t.strip()]
+
+
+def label_cluster(vlm_jsons: list[dict]) -> dict:
+    """products: kept verbatim per post (see product_names). topics: counted
+    across the cluster, since that vocabulary is written to be comparable in
+    a way product names aren't.
+
+    Takes each post's raw vlm_json (vision_schema.py) directly — the VLM's
+    structured output already has products/topics as first-class fields, no
+    line-format parsing needed.
     """
     products = []
-    cue_counts: Counter[str] = Counter()
+    topic_counts: Counter[str] = Counter()
 
-    for fields in parsed_fields:
-        if fields.get("PRODUCTS"):
-            products.append(fields["PRODUCTS"])
-        for cue in fields.get("CATEGORY CUES", "").split(","):
-            cue = cue.strip()
-            if cue:
-                cue_counts[cue] += 1
+    for obj in vlm_jsons:
+        products.extend(product_names(obj))
+        for topic in topics(obj):
+            topic_counts[topic] += 1
 
-    return {"products": products, "top_category_cues": cue_counts.most_common()}
+    return {"products": products, "top_topics": topic_counts.most_common()}

@@ -53,26 +53,6 @@ _client = genai.Client(api_key=settings.gemini_api_key)
 # otherwise need hand-rolled: the SDK serializes/parses that JSONL internally
 # when given a list of InlinedRequest, so there's nothing to hand-roll here.
 
-_LINE_PREFIXES = ("PRODUCTS:", "TEXT:", "SETTING:", "ACTION:", "CATEGORY CUES:")
-
-
-def parse_visual_description(visual_description: str | None) -> dict[str, str]:
-    """Line-prefix split of the 5-line format PROMPT above requires. {} if
-    none/unparseable. Kept next to PROMPT so the format and its parser change
-    together — this is the only place that format is assumed to hold."""
-    if not visual_description:
-        return {}
-
-    fields = {}
-    for line in visual_description.splitlines():
-        line = line.strip()
-        for prefix in _LINE_PREFIXES:
-            if line.startswith(prefix):
-                fields[prefix.rstrip(":")] = line[len(prefix) :].strip()
-                break
-    return fields
-
-
 def _claim_video_candidates(limit: int = CLAIM_BATCH_SIZE) -> list[dict]:
     """Posts still lacking a description, that actually have a video on disk.
 

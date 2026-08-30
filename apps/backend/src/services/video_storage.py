@@ -1,4 +1,4 @@
-"""Video byte storage — local disk, mirroring cover_storage.py.
+"""Video byte storage — local disk.
 
 No DB column: the path is derivable from the post id, so "has a video on disk"
 is a stat() call, not a row to keep in sync. A missing file just means the post

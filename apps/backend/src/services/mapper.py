@@ -76,8 +76,6 @@ def map_account_and_posts(api_response: dict[str, Any]) -> tuple[dict[str, Any],
             "visual_model": None,
             "visual_generated_at": None,
             "vlm_json": None,
-            "cover_key": None,
-            "cover_status": "pending",
             "comment_attempts": 0,
             "visual_attempts": 0,
         }
