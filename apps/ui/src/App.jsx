@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Scene from "./Scene.jsx";
 import Sidebar from "./Sidebar.jsx";
+import WorldsOverview from "./WorldsOverview.jsx";
 import { colorFor } from "./palette.js";
 
 /*
@@ -29,6 +30,7 @@ export default function App() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [hoveredWorldId, setHoveredWorldId] = useState(null);
+  const [view, setView] = useState("topology"); // "topology" | "worlds" — client-side toggle, no router lib installed
 
   useEffect(() => {
     fetch(`${API}/api/topology`)
@@ -66,19 +68,54 @@ export default function App() {
             <span className="live-dot" />
             VERILLIAN // SEMANTIC TOPOLOGY
           </div>
-          <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: -0.5 }}>Topology</h1>
+          <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: -0.5 }}>
+            {view === "topology" ? "Topology" : "Worlds Overview"}
+          </h1>
         </div>
-        {data && (
+
+        <div className="mono" style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center" }}>
+          {[
+            { key: "topology", label: "TOPOLOGY" },
+            { key: "worlds", label: "WORLDS" },
+          ].map((tab) => (
+            <span
+              key={tab.key}
+              onClick={() => setView(tab.key)}
+              style={{
+                cursor: "pointer",
+                padding: "4px 10px",
+                borderRadius: 3,
+                letterSpacing: 1,
+                color: view === tab.key ? "var(--accent-ink)" : "var(--text-muted)",
+                background: view === tab.key ? "var(--accent)" : "transparent",
+              }}
+            >
+              {tab.label}
+            </span>
+          ))}
+        </div>
+
+        {view === "topology" && data && (
           <div className="mono" style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>
             {data.worlds.length} WORLDS &middot; {data.posts.length} POSTS
           </div>
         )}
       </header>
 
-      {error && <p style={{ color: "#C44545" }}>Failed to load: {error}</p>}
-      {!data && !error && <p className="mono" style={{ color: "var(--text-muted)" }}>loading…</p>}
+      {view === "topology" && error && <p style={{ color: "#C44545" }}>Failed to load: {error}</p>}
+      {view === "topology" && !data && !error && <p className="mono" style={{ color: "var(--text-muted)" }}>loading…</p>}
 
-      {data && (
+      {view === "worlds" && (
+        <div className="app-panel">
+          <span className="corner-bracket tl" />
+          <span className="corner-bracket tr" />
+          <span className="corner-bracket bl" />
+          <span className="corner-bracket br" />
+          <WorldsOverview />
+        </div>
+      )}
+
+      {view === "topology" && data && (
         <div className="app-panel">
           <span className="corner-bracket tl" />
           <span className="corner-bracket tr" />

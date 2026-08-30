@@ -147,3 +147,58 @@ class WorldPost(Base):
     blob_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     cosine: Mapped[float | None] = mapped_column(Float, nullable=True)
     margin: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class PostTerm(Base):
+    """One row per (post, facet, term) edge — fully derived from vlm_json,
+    safe to truncate and recompute. Exists (rather than aggregating vlm_json
+    in one query) so a ranked term can be joined back to the real posts
+    behind it for drill-down."""
+
+    __tablename__ = "post_terms"
+    __table_args__ = (Index("ix_post_terms_world_facet_canon2", "world_id", "facet", "canon_term"), {"schema": "topology"})
+
+    post_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    world_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("topology.worlds.id"), nullable=False)
+    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    facet: Mapped[str] = mapped_column(Text, primary_key=True)
+    raw_term: Mapped[str] = mapped_column(Text, primary_key=True)
+    norm_term: Mapped[str] = mapped_column(Text, nullable=False)
+    canon_term: Mapped[str] = mapped_column(Text, nullable=False)
+    prominence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metric: Mapped[float | None] = mapped_column(Float, nullable=True)
+    low_conf: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
+
+
+class WorldTermStat(Base):
+    """The served rollup: one row per ranked term. Cache table — deleted and
+    reinserted wholesale per world on every `make overview`, never
+    incrementally updated."""
+
+    __tablename__ = "world_term_stats"
+    __table_args__ = {"schema": "topology"}
+
+    world_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("topology.worlds.id"), primary_key=True)
+    facet: Mapped[str] = mapped_column(Text, primary_key=True)
+    canon_term: Mapped[str] = mapped_column(Text, primary_key=True)
+    n_posts: Mapped[int] = mapped_column(Integer, nullable=False)
+    n_accounts: Mapped[int] = mapped_column(Integer, nullable=False)
+    n_hero: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    median_m: Mapped[float] = mapped_column(Float, nullable=False)
+    lift: Mapped[float] = mapped_column(Float, nullable=False)
+    view_ratio: Mapped[float] = mapped_column(Float, nullable=False)
+    variants: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    computed_at: Mapped[datetime.datetime] = mapped_column(default=datetime.datetime.utcnow)
+
+
+class TermEmbedding(Base):
+    """Embedding cache for canonicalization, keyed by the normalized string —
+    a rerun embeds only norm_terms seen for the first time."""
+
+    __tablename__ = "term_embeddings"
+    __table_args__ = {"schema": "topology"}
+
+    norm_term: Mapped[str] = mapped_column(Text, primary_key=True)
+    facet: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(default=datetime.datetime.utcnow)

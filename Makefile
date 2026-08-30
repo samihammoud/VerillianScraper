@@ -1,4 +1,4 @@
-.PHONY: install build test lint clean reset-data reseed-worlds ingest enrich route seed-crawl crawl smoke-test analyze ui serve dev
+.PHONY: install build test lint clean reset-data reseed-worlds ingest enrich route seed-crawl crawl smoke-test analyze overview ui serve dev
 
 BACKEND := apps/backend
 PY := $(BACKEND)/.venv/bin/python
@@ -57,6 +57,10 @@ smoke-test:
 # stage 4 — peak analysis for one account: pure compute over Postgres, no external API
 analyze:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_analyze "$(HANDLE)"
+
+# phase 7 — per-world term rollup (what's winning in this world). Run after `make route`.
+overview:
+	cd $(BACKEND) && $(PY) -m src.scripts.run_overview $(WORLD)
 
 # Crawl loop: search API -> candidate accounts -> ingest -> VLM -> next round's queries.
 seed-crawl:
