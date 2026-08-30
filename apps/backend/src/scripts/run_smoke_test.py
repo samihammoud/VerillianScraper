@@ -12,10 +12,7 @@ stages (ingest, enrich, route) the bulk pipeline uses, just driven synchronously
 against 4 accounts instead of via the independently-scheduled make targets.
 """
 
-import csv
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
 
 import httpx
 from sqlalchemy import select
@@ -23,6 +20,7 @@ from sqlalchemy import select
 from src.db.models import Post, World
 from src.db.session import SessionLocal
 from src.services.blob import select_comments, token_count
+from src.services.csv_export import write_timestamped_csv
 from src.services.enrich import enrich_comments
 from src.services.vision import describe_posts
 from src.services.ingest import ingest_account
@@ -36,8 +34,6 @@ TEST_ACCOUNTS = [
     "surthycooks",  # food
 ]
 POSTS_PER_ACCOUNT = 15
-
-OUT_DIR = Path(__file__).resolve().parents[2] / "out"
 
 CSV_BASE_COLUMNS = [
     "handle",
@@ -148,20 +144,9 @@ def _route_all(db) -> list[dict]:
     return rows
 
 
-def _write_csv(rows: list[dict]) -> Path:
+def _write_csv(rows: list[dict]):
     rows = sorted(rows, key=lambda r: r["margin"])
-
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    path = OUT_DIR / f"smoke_test_{timestamp}.csv"
-
-    fieldnames = CSV_BASE_COLUMNS + CSV_TAIL_COLUMNS
-    with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
-
-    return path
+    return write_timestamped_csv("smoke_test", CSV_BASE_COLUMNS + CSV_TAIL_COLUMNS, rows)
 
 
 def _percentile(values: list[float], pct: float) -> float:

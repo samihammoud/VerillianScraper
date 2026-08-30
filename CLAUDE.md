@@ -12,63 +12,98 @@ make build     # npm run build --workspaces --if-present
 make test      # npm run test --workspaces --if-present
 make lint      # npm run lint --workspaces --if-present
 make clean     # remove node_modules and per-app node_modules/dist
+make ui        # cd apps/ui && npm run dev — 3D topology viewer (Vite + React Three Fiber)
 ```
 
-These `make` targets are thin wrappers around the equivalent root `npm run <script> --workspaces --if-present` commands in `package.json`.
+`apps/ui` is a real workspace member now (Vite + React + `@react-three/fiber`/`drei` + `three`) — a 3D scene that renders the topology t-SNE projection served by the backend. `apps/backend` is a Python/FastAPI app with its own `requirements.txt` and `.venv` (not an npm workspace member — see its `docker-compose.yml` for the local Postgres+pgvector container). Its own targets are added directly to the root `Makefile` rather than as workspace scripts:
 
-No individual app currently has its own `package.json`, build/test/lint scripts, or dependency manifest (e.g. `apps/backend/testing.py` has no `pyproject.toml`/`requirements.txt` yet), so the commands above are no-ops until an app defines them. Set up each app's own tooling (and single-test invocation) as it's built out, and document it here once it exists.
+```bash
+make reset-data                        # truncate accounts, posts, topology.world_posts (NOT topology.worlds)
+make reseed-worlds                     # re-seed topology.worlds from scratch (deliberate — world UUIDs churn); follow with `make route`
+make ingest HANDLES=h1,h2 COUNT=100    # stage 1 — video list + cover bytes only, paginated
+make enrich                            # stage 2 — backfill comments + VLM cover descriptions for whatever still lacks them
+make route                             # stage 3 — batch-embed + route every post in the Account Store to a world
+make analyze HANDLE=handle             # stage 4 — peak detection + embedding clustering + cue labeling for one account, dumps a CSV to out/
+make smoke-test                        # run_smoke_test.py — ingest a fixed 4-account roster, route, dump a CSV to out/
+```
+
+Backend one-time setup:
+```bash
+cd apps/backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+docker compose up -d          # Postgres (pgvector) on localhost:5432
+alembic upgrade head
+uvicorn src.main:app --reload --port 8000   # serves GET /health and GET /api/topology
+```
+
+Requires `RAPIDAPI_KEY`/`RAPIDAPI_HOST` (TikTok scraping), `OPENAI_API_KEY` (`text-embedding-3-small`, routing + world reference embeddings), and `GEMINI_API_KEY` (`gemini-3.7-flash`, video VLM description via the Batch API) in `apps/backend/.env` — see `.env.example`.
 
 ## Architecture
 
 ### Repo layout
 
 - `apps/*` — one directory per application/service, wired as npm workspace members from the repo root.
+- `apps/backend` — Python/FastAPI. `src/services/` holds one module per pipeline stage (`ingest`, `enrich`, `routing`, `peaks`, `clustering`, `vision`, `embeddings`, `blob`, `mapper`, `persistence`, `cover_storage`, `csv_export`, `linalg`); `src/scripts/run_*.py` are the CLI entry points the Makefile calls; `src/routes/topology.py` is the one FastAPI route.
+- `apps/ui` — Vite + React Three Fiber. Renders `GET /api/topology`'s t-SNE projection of worlds + routed posts as a rotatable 3D scene.
 - Root `package.json` / `Makefile` only orchestrate workspace-level scripts; no shared library packages exist yet.
 
 ### Project
 
-A scraper that crawls TikTok/Instagram accounts, classifies their posts into pre-defined semantic "worlds," and uses accumulated post data per world to surface product ideas — content that looks like it's trending or sellable, based on semantic clustering + engagement, eventually pitched via an LLM.
+A scraper that crawls TikTok accounts, classifies their posts into pre-defined semantic "worlds," and uses accumulated post data per world to surface product ideas — content that looks like it's trending or sellable, based on semantic clustering + engagement. LLM-generated product pitches are the eventual goal but are not built yet (see "Explicitly out of scope" below).
 
-### Target architecture (mostly built — see "Current phase" below for what's left)
+### Architecture as built
 
-**Two separate stores:**
+**Two separate stores, both live:**
 
-- **Account Store** (Postgres) — raw scraped data. Accounts + posts, untouched, as scraped. System of record.
-- **Topology Store** (Postgres + pgvector) — worlds (pre-defined, migrated in by hand — not discovered by the system) + individual post embeddings, each tagged with which world it routed into. Lean, queried constantly for similarity.
+- **Account Store** (Postgres) — `accounts` + `posts`. Raw scraped data, plus enrichment fields written back onto the same `posts` row after the initial scrape: `comments` (JSONB, backfilled), `cover_key`/`cover_status` (downloaded cover bytes, see `cover_storage.py`), `visual_description`/`visual_model`/`visual_generated_at` (VLM output on the cover image), and `comment_attempts`/`visual_attempts` retry counters. System of record.
+- **Topology Store** (Postgres + pgvector, `topology` schema) — `topology.worlds` (8 hand-authored worlds, seeded by `seed_worlds.py`, each with a `reference_embedding`) and `topology.world_posts` (one row per routed post: `embedding`, `world_id`, `cosine`, `margin` to the runner-up, and the exact `blob_text` that was embedded — kept because comments keep accruing after the scrape, so the blob can't be reconstructed later). Upserted on `post_id`, so re-routing is idempotent.
 
-**Worlds are pre-populated, not discovered.** 6–8 worlds, manually defined with a short description each, embedded once into a `reference_embedding`, used as fixed routing targets. No autonomous world creation, no clustering-based world discovery.
+**Worlds are pre-populated, not discovered.** 8 worlds (`seed_worlds.py`), each with a description + example snippets, embedded once into `reference_embedding`. Still no autonomous world creation or clustering-based world discovery — additions/edits to the world set are a manual, deliberate edit + `make reseed-worlds` + `make route`.
 
-**Routing is per-post, not per-account.** Each post gets its own embedding (caption + comments as text input for now — no video-frame embedding yet) and gets compared via cosine similarity against every world's `reference_embedding`. Highest similarity wins. An account's posts can land in different worlds; there is no single "account vector."
+**Ingest is split into two independently-runnable, independently-retryable stages**, not one coupled scrape (see `ingest.py`'s module docstring for the incident that motivated the split — a mid-scrape VLM crash used to lose an entire account's already-paid-for video-list call):
+- **Stage 1 — `ingest_account`**: video list (paginated) + cover-image bytes only. Cover bytes are downloaded synchronously here because the *signed URL* expires, not the underlying frame.
+- **Stage 2 — `enrich.py`**: backfills `comments` and `visual_description` on whatever posts still lack them, via two independent claim-query + `ThreadPoolExecutor` passes (different quotas/failure domains: RapidAPI vs. Gemini). No queue table — "needs enrichment" is a derivable fact from the row itself (`comments IS NULL`, partial-indexed), and a Postgres advisory lock keeps overlapping runs from double-spending quota.
 
-**Full target loop (future phases):**
+**Routing is per-post, not per-account**, and is early-fusion, not multi-vector. `blob.py` assembles one token-budgeted text blob per post — visual description (from the VLM, budgeted highest) + caption + top filtered comments — embedded once (`text-embedding-3-small`) and compared via cosine similarity against all 8 world `reference_embedding`s; highest similarity wins, margin to the runner-up is stored for a future abstain threshold. Still no video-frame embedding — the visual signal is a VLM *text description* of the cover frame, folded into the same text blob, not a separate visual vector. `run_routing.py` batches this (keyset-paginated, one `embed_batch` + one matmul per page) for bulk use; `routing.route_post`/`persist_routing` are the single-post path used by the smoke test.
+
+**Peak + cluster analysis exists (stage 4, `run_analyze.py`) but stops short of LLM pitches.** Per account: `peaks.py` finds view-count outliers vs. that account's own post history (median+MAD, log1p'd, top-10% fallback for small samples), `clustering.py` groups those peaks by cosine similarity over the *already-computed* routing embedding (connected components at a threshold — no re-embedding, no sklearn), and each cluster is labeled from the VLM's parsed `PRODUCTS`/`CATEGORY CUES` fields (`vision.parse_visual_description`). Output is a CSV per account, not a stored pitch — there is no LLM synthesis step yet.
+
+**A visualization layer exists.** `GET /api/topology` projects all world reference embeddings + routed post embeddings into a shared 3D space via joint t-SNE (not PCA — variance is too spread across the 1536 dims for a linear projection to be meaningful) and returns each post's real cosine similarity to its own world. `apps/ui` renders this as a rotatable Three.js scene.
+
+**Full target loop (future phases — not built):**
 
 ```
 explore-page API → candidate accounts → crawl_queue
    → pull next pending account
-   → for each post: scrape → store raw (Account Store) → embed → route to world → store (Topology Store)
-→ account fully processed → gather evidence (semantic + engagement patterns) → LLM pitches products → store pitch
+   → [built: ingest → enrich → route → peak/cluster analysis, per account]
+→ LLM pitches products from cluster evidence → store pitch
 → pull leads from account metadata (similar accounts, hashtags) + topology → push into crawl_queue
 → repeat
 ```
 
 ### Explicitly out of scope, do not build preemptively
 
-Dedup/content-hash logic, frontier priority scoring, per-world API budgets, autonomous world creation, video-frame embeddings, product-pitch generation, the explore-page endpoint. These belong to later phases and get added once the core loop is proven — building them now creates plumbing around decisions (routing behavior, pitch format) that haven't been validated yet.
+Dedup/content-hash logic beyond the existing external-id uniqueness check, frontier priority scoring, per-world API budgets, autonomous world creation, true video-frame embeddings (the VLM text description is already folded into the routing blob), LLM product-pitch generation/storage, the explore-page endpoint, Instagram support (TikTok only so far). These belong to later phases and get added once the core loop (crawl → enrich → route → analyze) has been run against enough real accounts to validate world descriptions, routing quality, and the peak/cluster heuristics.
 
 ### Current status
 
-Three pipeline stages are built and functional, each runnable independently via `make`:
+Four pipeline stages are built and functional, each runnable independently via `make`:
 
-- **`make crawl`** (`apps/backend/src/services/crawl.py`) — cycles pending `crawl_queries` for a world: search API → candidate handles → ingest posts+videos per account (Account Store) → VLM visual-description pass → mark queries done → generate next round's queries. Queries are seeded via `make seed-crawl` (which requires `make seed-worlds` to have run first — `crawl_queries.world_slug` is a plain string, not an FK, so the ledger survives a worlds reseed; see comment at `models.py:88-91`).
-- **`make enrich`** (`apps/backend/src/services/enrich.py`) — fetches comments per post from RapidAPI, persists to `posts.comments` (JSONB).
-- **`make route`** (`apps/backend/src/services/routing.py`) — embeds posts (OpenAI `text-embedding-3-small`), cosine-matches against each world's `reference_embedding`, upserts into `topology.world_posts`.
+- **`make crawl`** (`crawl.py`) — cycles pending `crawl_queries` for a world: search API → candidate handles → ingest posts+videos per account (Account Store) → VLM video-description pass → mark queries done → generate next round's queries. Queries are seeded via `make seed-crawl` (requires `make reseed-worlds`/`seed_worlds.py` to have run first — `crawl_queries.world_slug` is a plain string, not an FK, so the ledger survives a worlds reseed).
+- **`make enrich`** (`enrich.py`) — backfills comments per post from RapidAPI, persists to `posts.comments` (JSONB).
+- **`make route`** (`routing.py`) — embeds posts (OpenAI `text-embedding-3-small`) using the VLM's video description only — caption/comments were dropped from the routing blob to keep the vector purely topical (see `blob.py`) — cosine-matches against each world's `reference_embedding`, upserts into `topology.world_posts`.
+- **`make analyze HANDLE=...`** (`run_analyze.py`) — peak detection (`peaks.py`) + embedding clustering (`clustering.py`) + cluster labeling, dumps a CSV per account.
 
-These three do not call each other — no stage chains into another. Comment enrichment and topology routing are not wired into the crawl loop.
+The VLM step is a real batch flow, not synchronous per-video calls: `vision.py` uploads each claimed video via the Files API, waits for it to reach `ACTIVE`, submits every request in one `batches.create` call, and polls `job.done` until Gemini finishes the whole job before collecting results.
 
-**In progress:** swapping the crawl loop's VLM step from synchronous per-video calls (`vision.py`'s `describe_posts()`, a 5-way thread pool of blocking `generate_content()` calls) to a real batch flow — upload → JSONL → submit → poll → collect — per the stub comment at `vision.py:43-46`.
+**Known mismatch to fix before trusting `make analyze` output:** cluster labeling in `run_analyze.py` reads `vision.parse_visual_description`, which still expects the *old* 5-line cover-image prompt format (`PRODUCTS:`/`TEXT:`/`SETTING:`/`ACTION:`/`CATEGORY CUES:`). `vision.py` no longer produces that shape — it emits structured JSON per `vision_schema.py`, flattened to prose by `flatten_for_blob` (different labels, different fields). This is a real gap from combining the crawl/video-batch work with the analyze/clustering work, not a stylistic difference — `parse_visual_description` needs to be rewritten against the new JSON shape (or `run_analyze.py`/`clustering.py` switched to reading `Post.vlm_json` directly) before cluster labels can be trusted.
 
 ## Working rules
 
 - Don't build ahead into product-pitch generation or the explore-page endpoint — those depend on decisions not yet finalized.
-- Ask before assuming a RapidAPI provider/endpoint if one isn't already configured in this repo.
+- Ask before assuming a RapidAPI provider/endpoint, embedding model, or VLM model if one isn't already configured in this repo.
 - Keep the scraper wrapper as a standalone, directly-testable module — it should not require the database to be running to verify it works.
+- Ingest and enrich are deliberately decoupled — don't recouple comment/video fetching back into the initial scrape call.
+- Routing stays early-fusion (one blob, one vector) and now visual-only — don't introduce per-modality vectors, weighted fusion, or add caption/comments back into the routing blob without an explicit decision to do so.
+- `parse_visual_description`/cluster labeling is currently broken against the new VLM output shape (see "Current status") — fix that before trusting `make analyze` output.
