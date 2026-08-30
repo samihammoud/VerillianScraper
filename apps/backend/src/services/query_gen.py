@@ -27,9 +27,9 @@ from src.db.models import CrawlQuery, Post, World
 logger = logging.getLogger(__name__)
 
 MODEL = "gemini-3.6-flash"
-QUERIES_PER_ROUND = 10
-N_EXPLOIT = 6
-N_EXPLORE = 4
+QUERIES_PER_ROUND = 5  # testing-volume cap; matches crawl.QUERIES_PER_ROUND
+N_EXPLOIT = 2  # specific: go deeper on an observed term
+N_EXPLORE = 3  # general: reach for an adjacent, uncovered corner
 TOP_TERMS = 8
 
 _client = genai.Client(api_key=settings.gemini_api_key)

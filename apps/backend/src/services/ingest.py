@@ -21,7 +21,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from src.services.cover_storage import store_cover
-from src.services.mapper import map_account_and_posts, page_cursor
+from src.services.mapper import map_account_and_posts
 from src.services.persistence import get_existing_post_external_ids, store_account_and_posts
 from src.services.tiktok_client import get_user_videos
 from src.services.video_storage import store_video
@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 COVER_FETCH_TIMEOUT = 15.0
 COVER_FETCH_ATTEMPTS = 2  # a cheap CDN GET, not RapidAPI/Gemini quota — light retry is free
 VIDEO_FETCH_TIMEOUT = 120.0
-MAX_PAGES = 50  # safety cap against a pagination loop that never terminates
 
 # TikTok's CDN rejects bare requests for playAddr. The referer/UA pair is a
 # calibration knob, not a constant — if downloads start 403ing, this is the
@@ -79,6 +78,13 @@ def _fetch_video(post: dict) -> None:
     Downloaded at ingest rather than at VLM time because the play URL is signed
     and short-lived — by the time a batch runs, it's dead. A post with no video
     file is simply skipped by the VLM claim query.
+
+    Photo-mode/slideshow posts (images + a music track, no real video) still
+    populate `play`, but it resolves to the song CDN (content-type audio/*).
+    Storing that as a .mp4 would force Gemini to parse audio as video, which
+    fails deterministically on every attempt and burns visual_attempts for a
+    post that structurally can never succeed — so it's rejected here, upstream
+    of both the disk write and the VLM claim query.
     """
     url = (post.get("media_urls") or {}).get("play")
     if not url:
@@ -87,37 +93,22 @@ def _fetch_video(post: dict) -> None:
     try:
         response = httpx.get(url, headers=_VIDEO_HEADERS, timeout=VIDEO_FETCH_TIMEOUT, follow_redirects=True)
         response.raise_for_status()
+        if not response.headers.get("content-type", "").startswith("video/"):
+            logger.warning("play url for post=%s is not a video (content-type=%s) — skipping",
+                           post["id"], response.headers.get("content-type"))
+            return
         store_video(post["id"], response.content)
     except Exception as exc:
         logger.warning("video fetch failed for post=%s: %s", post["id"], exc)
 
 
 def ingest_account(db: Session, handle: str, count: int, discovered_by_world: str | None = None) -> UUID | None:
-    """Fetch an account's video list (paginated) and cover bytes only.
+    """Fetch an account's video list (single call, no pagination) and cover bytes only.
 
     No comments, no VLM — see enrich.py. Returns the account id.
     """
-    account_data: dict = {}
-    posts_data: list[dict] = []
-    cursor = "0"
-
-    for _ in range(MAX_PAGES):
-        if len(posts_data) >= count:
-            break
-
-        raw = get_user_videos(handle, count=count - len(posts_data), cursor=cursor)
-        page_account, page_posts = map_account_and_posts(raw)
-        if not page_account:
-            break
-
-        account_data = page_account
-        posts_data.extend(page_posts)
-
-        has_more, next_cursor = page_cursor(raw)
-        if not has_more or not page_posts:
-            break
-        cursor = next_cursor
-
+    raw = get_user_videos(handle, count=count)
+    account_data, posts_data = map_account_and_posts(raw)
     if not account_data:
         return None
 

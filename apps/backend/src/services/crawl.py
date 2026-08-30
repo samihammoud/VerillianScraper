@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 POSTS_PER_ACCOUNT = 40  # below ~30 the peak baseline degrades to its top-10% fallback
 SEARCH_PAGES = 3
+QUERIES_PER_ROUND = 5  # testing-volume cap; matches query_gen.QUERIES_PER_ROUND
+ACCOUNTS_PER_QUERY = 5  # testing-volume cap on how many found handles actually get ingested
 
 
 def search_handles(keyword: str) -> list[str]:
@@ -75,7 +77,7 @@ def run_query(db: Session, query: CrawlQuery) -> tuple[int, int]:
     known = _known_handles(db, handles)  # sampled before ingest, which would make them all known
     new = [h for h in handles if h not in known]
 
-    for handle in handles:
+    for handle in handles[:ACCOUNTS_PER_QUERY]:
         try:
             ingest_account(db, handle, POSTS_PER_ACCOUNT, discovered_by_world=query.world_slug)
         except Exception as exc:
@@ -101,6 +103,7 @@ def run_round(db: Session, world_slug: str) -> bool:
         select(CrawlQuery)
         .where(CrawlQuery.world_slug == world_slug, CrawlQuery.status == "pending")
         .order_by(CrawlQuery.round_no, CrawlQuery.id)
+        .limit(QUERIES_PER_ROUND)
     ).scalars().all()
 
     if not pending:
