@@ -1,13 +1,12 @@
-"""Assembles the single text blob that gets embedded for routing.
+"""Assembles the text blob that gets embedded for routing.
 
-One blob, one embed() call, one vector — no weighted fusion, no per-modality
-vectors. Section token budgets (not weights) are what balance visual/caption/
-comment signal against each other. Counted against the same tokenizer the
-embedding model (text-embedding-3-small) uses, so budgets map to real cost.
+Visual description only, budget-truncated against the same tokenizer the
+embedding model (text-embedding-3-small) uses, so the budget maps to real
+cost. Caption/comments are no longer part of the routing blob — kept purely
+topical to the VLM's video description.
 
-Comment filtering matters more here than under weighted fusion: off-topic
-comment tokens pull the single vector off the product signal and there's no
-way to down-weight them afterward.
+select_comments/token_count are still used by run_smoke_test.py's diagnostic
+output; they no longer feed assemble_blob.
 """
 
 import re
@@ -70,25 +69,12 @@ def select_comments(comments: list[dict]) -> list[str]:
     return kept
 
 
-def assemble_blob(caption: str | None, comments: list[dict], visual_description: str | None) -> str:
-    """Build the labeled, budget-truncated blob that gets embedded for routing.
+def assemble_blob(visual_description: str | None) -> str:
+    """Build the budget-truncated blob that gets embedded for routing.
 
-    Sections are omitted entirely when empty — never emit a bare "Comments:"
-    label with nothing after it. Labels are kept semantically inert (e.g. not
-    "Product shown:") so they don't nudge every blob toward one world.
+    Visual description only — caption/comments dropped per the call to embed
+    just the VLM's video description, keeping routing signal purely topical.
     """
-    lines = []
-
-    if visual_description and visual_description.strip():
-        visual = _truncate(visual_description.strip(), VISUAL_TOKEN_BUDGET)
-        lines.append(f"Visual: {visual}")
-
-    if caption and caption.strip():
-        cap = _truncate(caption.strip(), CAPTION_TOKEN_BUDGET)
-        lines.append(f"Caption: {cap}")
-
-    kept_comments = select_comments(comments)
-    if kept_comments:
-        lines.append(f"Comments: {' | '.join(kept_comments)}")
-
-    return "\n".join(lines)
+    if not visual_description or not visual_description.strip():
+        return ""
+    return _truncate(visual_description.strip(), VISUAL_TOKEN_BUDGET)

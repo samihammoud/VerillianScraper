@@ -1,7 +1,7 @@
 """Routes Posts to Worlds by cosine similarity, and persists the result.
 
-Early fusion only: visual description + caption + top comments go into a
-single text blob (see blob.py), embedded once. No weighted fusion, no
+Visual description only (see blob.py) is embedded — caption/comments are
+dropped to keep the routing vector purely topical. No weighted fusion, no
 per-modality vectors — matching the scope of this phase.
 
 Two shapes are exposed:
@@ -25,9 +25,8 @@ from src.services.embeddings import embed, embed_batch
 
 
 def route_post(post: Post, worlds: list[World]) -> tuple[uuid.UUID, list[float], float, str, float, uuid.UUID | None, float | None]:
-    # 1. Assemble the blob — visual description + caption + top comments, budgeted
-    comments = (post.comments or {}).get("comments", [])
-    text_blob = assemble_blob(post.caption, comments, post.visual_description)
+    # 1. Assemble the blob — visual description only, budgeted
+    text_blob = assemble_blob(post.visual_description)
 
     # 2. Embed — one call
     post_vec = np.array(embed(text_blob))
@@ -98,11 +97,15 @@ def normalized_world_matrix(worlds: list[World]) -> tuple[np.ndarray, list[uuid.
 
 def route_posts_batch(posts: list[Post], world_matrix: np.ndarray, world_ids: list[uuid.UUID]) -> list[dict]:
     """Batch-embeds a page of posts and scores all of them against all worlds
-    in one matmul. Returns one result dict per post, same order as `posts`."""
-    blobs = [
-        assemble_blob(post.caption, (post.comments or {}).get("comments", []), post.visual_description)
-        for post in posts
-    ]
+    in one matmul. Returns one result dict per post — posts with no visual
+    description yet (blob would be empty; OpenAI rejects empty input) are
+    skipped and left for a later routing pass once they're described."""
+    routable = [post for post in posts if post.visual_description and post.visual_description.strip()]
+    if not routable:
+        return []
+
+    blobs = [assemble_blob(post.visual_description) for post in routable]
+    posts = routable
 
     vectors = np.array(embed_batch(blobs))  # (N, 1536)
     norms = np.linalg.norm(vectors, axis=1, keepdims=True)
