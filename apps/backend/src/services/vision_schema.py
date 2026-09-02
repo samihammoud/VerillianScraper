@@ -1,132 +1,105 @@
-"""The VLM output contract: free vocabulary, fixed shape.
+"""The VLM contract: what Gemini is asked to extract from one video.
 
-Emerging terms have to be able to surface (a closed enum would silently
-collapse "silicone lick mat" into whatever bucket existed last quarter), but
-the strings still need to cluster — so every free-text field is constrained to
-a lowercase noun phrase of a stated word count rather than to a fixed list.
+Free vocabulary in a fixed shape. Emerging terms surface because the free-text
+fields are unconstrained; the strings still cluster because every one of them is
+pinned to a lowercase noun phrase of a stated word count.
 
-The `description` strings are prompt text the model reads, not documentation.
-They carry the shape constraints and must go in verbatim.
+SCHEMA v2 adds the romance/dialogue layer: `premise`, `dialogue`, `relationship`,
+`characters`, `synthetic`, `punchline`. Two constraints shaped it:
 
-flatten_for_blob lives here, beside the schema: the renderer and the shape it
-renders have to change together, and it is the only thing standing between the
-VLM output and routing.
+1. `describe_posts()` is WORLD-BLIND. It claims every undescribed post in the
+   database, and at claim time routing has not run, so the post's world is not
+   even known. This schema therefore applies to product videos too — every
+   romance-specific field is nullable and every enum carries `not_applicable`.
+   A dog-toy video must be able to answer all of them cleanly.
+
+2. The analytical axes are ENUMS, not free text, on purpose. In terms.py the
+   RAW_FACETS (cta, audio_kind) skip normalize() and skip embed+cluster entirely.
+   An enum facet is therefore rankable with zero canonicalization risk — no
+   single-link chaining, no threshold to tune, no `variants` to audit. Free text
+   is reserved for the fields where the specific wording IS the payload
+   (premise, dialogue, hook, punchline).
+
+`flatten_for_blob` is deliberately NOT extended with the new fields. It builds
+the string routing embeds, and changing it would change routing behaviour for
+every world, including the already-routed pets corpus. summary + setting + topics
+already carry the relationship signal.
+
+extract_terms in terms.py is the mirror of flatten_for_blob — same input,
+different projection. When SCHEMA_VERSION changes here, check there too.
+
+RESPONSE_SCHEMA lives in data/vlm/response_schema.json, not inline — it's the
+one part of this contract most likely to get hand-edited field-by-field (a
+new enum value, a tweaked description), and every string in it is prompt text
+Gemini reads, not documentation. Loaded once at import time; a change to the
+file takes effect on the next process start, same as the crawl data files in
+crawl_config.py.
 """
 
-SCHEMA_VERSION = 1
+import json
+from pathlib import Path
 
-RESPONSE_SCHEMA = {
-    "type": "object",
-    "required": ["summary", "hook", "transcript", "on_screen_text", "format",
-                 "format_traits", "setting", "topics", "products", "entities",
-                 "audio", "creator_on_camera", "cta", "confidence"],
-    "propertyOrdering": ["summary", "hook", "transcript", "on_screen_text", "format",
-                         "format_traits", "setting", "topics", "products", "entities",
-                         "audio", "creator_on_camera", "cta", "confidence"],
-    "properties": {
-        "summary": {"type": "string",
-                    "description": "One sentence: what happens in the video."},
-        "hook": {"type": "string", "nullable": True,
-                 "description": "Verbatim spoken line and/or on-screen text in the first 3 seconds."},
-        "transcript": {"type": "string", "nullable": True,
-                       "description": "Verbatim spoken words in order. null if no speech."},
-        "on_screen_text": {"type": "array", "items": {"type": "string"},
-                           "description": "Every distinct text overlay, verbatim, in order."},
-        "format": {"type": "string",
-                   "description": "2-4 words, lowercase noun phrase, for how the video is "
-                                  "constructed - not what it is about. Examples: 'voiceover "
-                                  "product demo', 'green screen reaction', 'silent before after'."},
-        "format_traits": {"type": "array", "items": {"type": "string"},
-                          "description": "0-3 further 1-3 word lowercase traits. Examples: 'fast cuts', "
-                                         "'trending audio', 'text only', 'pov framing', 'asmr'."},
-        "setting": {"type": "string",
-                    "description": "2-4 words, lowercase noun phrase. Examples: 'kitchen counter', "
-                                   "'dog park', 'vet waiting room'."},
-        "topics": {"type": "array", "items": {"type": "string"},
-                   "description": "2-5 subjects of the video, each a 2-4 word lowercase noun phrase."},
-        "products": {
-            "type": "array",
-            "description": "Physical products shown or named. Empty if none.",
-            "items": {
-                "type": "object",
-                "required": ["name", "brand", "prominence", "first_seen_sec"],
-                "propertyOrdering": ["name", "brand", "prominence", "first_seen_sec"],
-                "properties": {
-                    "name": {"type": "string",
-                             "description": "2-4 words, lowercase noun phrase for the object itself, "
-                                            "no brand. Examples: 'ceramic slow feeder bowl', "
-                                            "'silicone lick mat'."},
-                    "brand": {"type": "string", "nullable": True,
-                              "description": "Only if legible on screen or spoken aloud. Never inferred."},
-                    "prominence": {"type": "string", "enum": ["hero", "incidental"]},
-                    "first_seen_sec": {"type": "number"},
-                },
-            },
-        },
-        "entities": {
-            "type": "object",
-            "required": ["people", "brands", "places", "organizations"],
-            "propertyOrdering": ["people", "brands", "places", "organizations"],
-            "properties": {
-                "people": {"type": "array", "items": {"type": "string"},
-                           "description": "Named people mentioned or shown, verbatim. Not the creator "
-                                          "unless named."},
-                "brands": {"type": "array", "items": {"type": "string"},
-                           "description": "Brands named aloud or legible on screen, verbatim."},
-                "places": {"type": "array", "items": {"type": "string"},
-                           "description": "Cities, countries, regions, or venues named or clearly shown "
-                                          "by signage, verbatim."},
-                "organizations": {"type": "array", "items": {"type": "string"},
-                                  "description": "Companies, clinics, shelters, retailers named, verbatim."},
-            },
-        },
-        "audio": {
-            "type": "object",
-            "required": ["kind", "spoken_language", "speaker_count"],
-            "propertyOrdering": ["kind", "spoken_language", "speaker_count"],
-            "properties": {
-                "kind": {"type": "string",
-                         "enum": ["direct_speech", "voiceover", "music_only", "ambient", "silent"]},
-                "spoken_language": {"type": "string", "nullable": True,
-                                    "description": "BCP-47 code of the speech, e.g. 'en', 'es'. null if no speech."},
-                "speaker_count": {"type": "integer"},
-            },
-        },
-        "creator_on_camera": {"type": "boolean"},
-        "cta": {"type": "string", "enum": ["comment", "link_in_bio", "follow", "shop_now", "none"]},
-        "confidence": {"type": "string", "enum": ["low", "med", "high"]},
-    },
-}
+SCHEMA_VERSION = 2
+
+_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "data" / "vlm" / "response_schema.json"
+RESPONSE_SCHEMA = json.loads(_SCHEMA_PATH.read_text())
 
 SYSTEM_INSTRUCTION = """\
 You analyze short-form vertical videos and return structured JSON.
 
 - Report only what is seen in the video or heard in its audio. Never infer or
   draw on outside knowledge about brands, people, or places.
-- If a field is not determinable, use null, or an empty array.
+- If a field is not determinable, use null, an empty array, or the
+  'not_applicable' / 'unclear' enum member. Never guess to fill a field.
+- Many videos are not about relationships. For those, every field under
+  `relationship` is "not_applicable", `premise` is null, and `dialogue` is empty.
+  This is expected and correct, not a failure.
 - brand and entities are verbatim only: legible on screen or spoken aloud. A
   logo you recognize but cannot read is not legible.
 - products are physical goods only. Not services, apps, locations, or software.
 - prominence is "hero" if the video is about the product, "incidental" if it is
   merely present in frame.
-- format, format_traits, setting, topics and product names are free text, but
-  always lowercase noun phrases of the stated word count. No sentences, no
-  articles, no punctuation. Describe, do not editorialize: "voiceover product
-  demo", not "engaging demo". Reuse the plainest wording you would use for any
-  similar video.
-- transcript and on_screen_text are verbatim. Do not summarize, correct, or
-  translate.
+- transcript, dialogue lines, hook, punchline and on_screen_text are VERBATIM.
+  Do not summarize, correct, paraphrase, or translate. These are the payload.
+- premise is the opposite: not verbatim, and not a description of the footage.
+  It is the underlying situation, phrased as a person would tell a friend.
+- format, format_traits, setting, topics, character dynamic and product names are
+  free text, but always lowercase noun phrases of the stated word count. No
+  sentences, no articles, no punctuation. Describe, do not editorialize:
+  "two person skit", not "hilarious skit".
+- topics must name the specific situation, never the content genre. "delayed text
+  replies" is a topic; "relationship advice" is not.
+- synthetic.presenter is judged ONLY from visual and audio artifacts you can
+  point to in synthetic.signals. Subject matter, production polish, attractiveness
+  and studio lighting are not evidence. When there are no artifacts, answer
+  "real_person" with certainty "low", or "unclear" — never infer from vibe.
 """
 
 GENERATION_CONFIG = {
     "temperature": 0,
-    # "low" in the spec; the SDK's enum name for it. ~100 tokens per second of
-    # video vs ~300 at the default.
-    "media_resolution": "MEDIA_RESOLUTION_LOW",
+    "media_resolution": "MEDIA_RESOLUTION_LOW",  # the Batch API rejects the bare "low" shorthand; needs the full enum name
     "response_mime_type": "application/json",
     "response_schema": RESPONSE_SCHEMA,
-    "system_instruction": SYSTEM_INSTRUCTION,
 }
+
+
+def _schema_check() -> None:
+    """Every `required` name must exist in `properties`, at every level — a typo
+    here is a schema Gemini rejects for the whole batch, hours in."""
+
+    def walk(node: dict, path: str = "") -> None:
+        if node.get("type") == "object":
+            props = node.get("properties", {})
+            for name in node.get("required", []):
+                assert name in props, f"{path}: required '{name}' not in properties"
+            assert set(node.get("propertyOrdering", props)) == set(props), f"{path}: ordering mismatch"
+            for name, child in props.items():
+                walk(child, f"{path}.{name}")
+        elif node.get("type") == "array":
+            walk(node.get("items", {}), f"{path}[]")
+
+    walk(RESPONSE_SCHEMA, "root")
+    print("schema self-check ok")
 
 
 def flatten_for_blob(obj: dict) -> str:
@@ -186,6 +159,7 @@ def _self_check() -> None:
     # A products entry with no usable name must not emit a dangling "Products:".
     assert "Products" not in flatten_for_blob({"summary": "x", "products": [{"brand": "Acme"}]})
 
+    _schema_check()
     print("vision_schema self-check ok")
 
 

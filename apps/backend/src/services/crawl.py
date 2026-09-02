@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 POSTS_PER_ACCOUNT = 40  # below ~30 the peak baseline degrades to its top-10% fallback
 SEARCH_PAGES = 3
 QUERIES_PER_ROUND = 5  # testing-volume cap; matches query_gen.QUERIES_PER_ROUND
-ACCOUNTS_PER_QUERY = 5  # testing-volume cap on how many found handles actually get ingested
+ACCOUNTS_PER_QUERY = 20  # was 5 (a labeled testing cap)
 
 
 def search_handles(keyword: str) -> list[str]:

@@ -1,0 +1,168 @@
+{
+  "type": "object",
+  "required": ["summary", "premise", "hook", "punchline", "transcript", "dialogue",
+               "on_screen_text", "format", "format_traits", "setting", "topics",
+               "relationship", "characters", "synthetic", "products", "entities",
+               "audio", "creator_on_camera", "estimated_duration_sec", "cta", "confidence"],
+  "propertyOrdering": ["summary", "premise", "hook", "punchline", "transcript", "dialogue",
+                       "on_screen_text", "format", "format_traits", "setting", "topics",
+                       "relationship", "characters", "synthetic", "products", "entities",
+                       "audio", "creator_on_camera", "estimated_duration_sec", "cta", "confidence"],
+  "properties": {
+    "summary": {"type": "string",
+                "description": "One sentence: what happens in the video."},
+    "premise": {"type": "string", "nullable": true,
+                "description": "One sentence naming the relatable SITUATION the video is built on, not what appears on screen. Write it as a person would describe it to a friend. Examples: 'he takes hours to reply and she reads into it', 'they disagree about how much time to spend with his friends'. null if the video is not about a human situation."},
+
+    "hook": {"type": "string", "nullable": true,
+             "description": "Verbatim spoken line and/or on-screen text in the first 3 seconds."},
+    "punchline": {"type": "string", "nullable": true,
+                  "description": "Verbatim final spoken or on-screen line, if the video lands on a turn, joke, or reversal. null otherwise."},
+    "transcript": {"type": "string", "nullable": true,
+                   "description": "Verbatim spoken words in order. null if no speech."},
+    "dialogue": {
+      "type": "array",
+      "description": "The exchange, in order, when two or more people speak. Up to 12 turns; if longer, take the 12 that carry the exchange. Empty array if there is no back-and-forth.",
+      "items": {
+        "type": "object",
+        "required": ["speaker", "line"],
+        "propertyOrdering": ["speaker", "line"],
+        "properties": {
+          "speaker": {"type": "string",
+                      "description": "Role label for who is speaking, 1-2 lowercase words. Examples: 'girlfriend', 'boyfriend', 'narrator', 'friend', 'therapist'."},
+          "line": {"type": "string",
+                   "description": "Verbatim. Do not summarize, correct, or translate."}
+        }
+      }
+    },
+    "on_screen_text": {"type": "array", "items": {"type": "string"},
+                       "description": "Every distinct text overlay, verbatim, in order."},
+
+    "format": {"type": "string",
+               "description": "2-4 words, lowercase noun phrase, for how the video is constructed - not what it is about. Examples: 'voiceover product demo', 'green screen reaction', 'two person skit', 'pov direct address', 'silent before after'."},
+    "format_traits": {"type": "array", "items": {"type": "string"},
+                      "description": "0-3 further 1-3 word lowercase traits. Examples: 'fast cuts', 'trending audio', 'text only', 'pov framing', 'asmr', 'split screen', 'subtitled', 'single take'."},
+    "setting": {"type": "string",
+                "description": "2-4 words, lowercase noun phrase. Examples: 'kitchen counter', 'car passenger seat', 'bedroom bed', 'dog park'."},
+    "topics": {"type": "array", "items": {"type": "string"},
+               "description": "2-5 subjects of the video, each a 2-4 word lowercase noun phrase. For relationship content name the SITUATION, not the genre: 'delayed text replies', 'meeting his friends', 'splitting rent' - never 'relationship advice' or 'couple content'."},
+    "estimated_duration_sec": {"type": "number",
+                               "description": "Approximate length of the video in seconds."},
+
+    "relationship": {
+      "type": "object",
+      "required": ["stage", "conflict", "register", "resolution", "perspective"],
+      "propertyOrdering": ["stage", "conflict", "register", "resolution", "perspective"],
+      "properties": {
+        "stage": {"type": "string",
+                  "enum": ["talking_stage", "situationship", "dating", "long_term",
+                           "engaged_married", "broken_up", "single", "ambiguous",
+                           "not_applicable"],
+                  "description": "Stage of the relationship depicted or discussed. Use 'not_applicable' when the video is not about a relationship."},
+        "conflict": {"type": "string",
+                     "enum": ["communication", "jealousy_trust", "attention_neglect",
+                              "money", "domestic_chores", "family_friends", "intimacy",
+                              "future_commitment", "distance", "ex_partner",
+                              "no_conflict", "not_applicable"],
+                     "description": "The friction the video turns on. 'no_conflict' for purely affectionate or cute content. Use 'not_applicable' when the video is not about a relationship."},
+        "register": {"type": "string",
+                     "enum": ["cute_affectionate", "funny", "petty", "bittersweet",
+                              "advice", "venting", "cringe", "not_applicable"],
+                     "description": "Emotional tone of the piece. Use 'not_applicable' when the video is not about a relationship."},
+        "resolution": {"type": "string",
+                       "enum": ["reassurance", "punchline", "unresolved", "advice_given",
+                                "escalation", "not_applicable"],
+                       "description": "How the video ends. Use 'not_applicable' when the video is not about a relationship."},
+        "perspective": {"type": "string",
+                        "enum": ["woman", "man", "both", "third_party", "not_applicable"],
+                        "description": "Whose side the video is told from. Use 'not_applicable' when the video is not about a relationship."}
+      }
+    },
+
+    "characters": {
+      "type": "object",
+      "required": ["count", "pairing", "dynamic"],
+      "propertyOrdering": ["count", "pairing", "dynamic"],
+      "properties": {
+        "count": {"type": "integer",
+                  "description": "Distinct people appearing or voiced. 0 if none."},
+        "pairing": {"type": "string",
+                    "enum": ["romantic_couple", "friends", "one_person_two_roles",
+                             "single_person", "group", "none"],
+                    "description": "'one_person_two_roles' when one creator plays both sides of an exchange."},
+        "dynamic": {"type": "string", "nullable": true,
+                    "description": "2-5 lowercase words for how the pair plays off each other. Examples: 'anxious partner calm partner', 'both playful teasing', 'one lectures one deflects'. null if fewer than two people."}
+      }
+    },
+
+    "synthetic": {
+      "type": "object",
+      "required": ["presenter", "voice", "signals", "certainty"],
+      "propertyOrdering": ["presenter", "voice", "signals", "certainty"],
+      "description": "Whether the people on screen are real. Judge only from artifacts you can actually see or hear - never from subject matter or polish.",
+      "properties": {
+        "presenter": {"type": "string",
+                      "enum": ["real_person", "ai_generated_person", "animated_character",
+                               "text_only", "object_or_puppet", "unclear"],
+                      "description": "Use 'unclear' rather than guessing."},
+        "voice": {"type": "string",
+                  "enum": ["human", "synthetic_tts", "none", "unclear"]},
+        "signals": {"type": "array", "items": {"type": "string"},
+                    "description": "The specific artifacts that led to the judgement, each 1-4 lowercase words. Examples: 'warping hands', 'unblinking eyes', 'lips out of sync', 'flat prosody', 'background morphs'. Empty array if none observed."},
+        "certainty": {"type": "string", "enum": ["low", "med", "high"],
+                      "description": "Confidence in `presenter` specifically. Use 'low' freely - synthetic video is often indistinguishable."}
+      }
+    },
+
+    "products": {
+      "type": "array",
+      "description": "Physical products shown or named. Empty if none.",
+      "items": {
+        "type": "object",
+        "required": ["name", "brand", "prominence", "first_seen_sec"],
+        "propertyOrdering": ["name", "brand", "prominence", "first_seen_sec"],
+        "properties": {
+          "name": {"type": "string",
+                   "description": "2-4 words, lowercase noun phrase for the object itself, no brand. Examples: 'ceramic slow feeder bowl', 'silicone lick mat'."},
+          "brand": {"type": "string", "nullable": true,
+                    "description": "Only if legible on screen or spoken aloud. Never inferred."},
+          "prominence": {"type": "string", "enum": ["hero", "incidental"]},
+          "first_seen_sec": {"type": "number"}
+        }
+      }
+    },
+    "entities": {
+      "type": "object",
+      "required": ["people", "brands", "places", "organizations"],
+      "propertyOrdering": ["people", "brands", "places", "organizations"],
+      "properties": {
+        "people": {"type": "array", "items": {"type": "string"},
+                   "description": "Named people mentioned or shown, verbatim. Not the creator unless named."},
+        "brands": {"type": "array", "items": {"type": "string"},
+                   "description": "Brands named aloud or legible on screen, verbatim."},
+        "places": {"type": "array", "items": {"type": "string"},
+                   "description": "Cities, countries, regions, or venues named or clearly shown by signage, verbatim."},
+        "organizations": {"type": "array", "items": {"type": "string"},
+                          "description": "Companies, clinics, shelters, retailers named, verbatim."}
+      }
+    },
+    "audio": {
+      "type": "object",
+      "required": ["kind", "spoken_language", "speaker_count"],
+      "propertyOrdering": ["kind", "spoken_language", "speaker_count"],
+      "properties": {
+        "kind": {"type": "string",
+                 "enum": ["direct_speech", "voiceover", "music_only", "ambient", "silent"]},
+        "spoken_language": {"type": "string", "nullable": true,
+                            "description": "BCP-47 code of the speech, e.g. 'en', 'es'. null if no speech."},
+        "speaker_count": {"type": "integer"}
+      }
+    },
+    "creator_on_camera": {"type": "boolean"},
+    "cta": {"type": "string",
+            "enum": ["comment", "tag_someone", "share", "link_in_bio", "follow",
+                     "shop_now", "none"],
+            "description": "'tag_someone' covers 'tag your person', 'send this to him'."},
+    "confidence": {"type": "string", "enum": ["low", "med", "high"]}
+  }
+}

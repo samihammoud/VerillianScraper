@@ -1,4 +1,4 @@
-"""Seeds round 0 of a world's crawl with 10 hand-written queries and exits.
+"""Seeds round 0 of a world's crawl with its hand-written seed queries.
 
 Never generates and never marks anything done — that is run_crawl's job.
 Refuses if that world already has queries, because re-seeding a live ledger
@@ -15,29 +15,20 @@ from sqlalchemy import func, select
 
 from src.db.models import CrawlQuery, World
 from src.db.session import SessionLocal
-
-SEED_QUERIES = {
-    "pets": [
-        "pets",
-        "dog toys",
-        "cat products",
-        "puppy training",
-        "pet grooming",
-        "dog food review",
-        "aquarium setup",
-        "small pet care",
-        "pet gadgets",
-        "rescue dog",
-    ],
-}
+from src.services.crawl_config import load_seed_queries
 
 
 def main() -> None:
     world_slug = sys.argv[1] if len(sys.argv) > 1 else "pets"
 
-    queries = SEED_QUERIES.get(world_slug)
+    try:
+        queries = load_seed_queries(world_slug)
+    except FileNotFoundError:
+        print(f"no seed queries file for world {world_slug!r} — add data/{world_slug}/seed_queries.txt")
+        raise SystemExit(1)
+
     if not queries:
-        print(f"no seed queries written for world {world_slug!r} — add them to SEED_QUERIES")
+        print(f"data/{world_slug}/seed_queries.txt has no queries after stripping blanks/comments")
         raise SystemExit(1)
 
     db = SessionLocal()

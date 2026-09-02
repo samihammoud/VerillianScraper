@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from src.db.models import World
 from src.db.session import SessionLocal
+from src.services.crawl_config import load_world
 from src.services.embeddings import embed
 
 WORLDS = [
@@ -158,11 +159,19 @@ WORLDS = [
             "stroller comparison after 6 months of use",
         ],
     },
+    load_world("romance"),
 ]
 
 
 def seed_worlds(db) -> None:
+    """Additive: skips any slug already present. Appending a ninth world and
+    re-running must never touch the existing eight — their world_posts rows
+    and UUIDs stay exactly as they are. See reseed-worlds for the deliberate,
+    destructive full-truncate path."""
+    existing = set(db.execute(select(World.slug)).scalars().all())
     for w in WORLDS:
+        if w["slug"] in existing:
+            continue
         embed_input = w["description"] + "\n" + "\n".join(w["example_snippets"])
         vec = embed(embed_input)
         db.add(
@@ -208,12 +217,11 @@ def print_similarity_matrix(db, threshold: float = 0.8) -> None:
 if __name__ == "__main__":
     db = SessionLocal()
     try:
-        existing = db.execute(select(World)).scalars().first()
-        if existing is None:
-            seed_worlds(db)
-            print(f"Seeded {len(WORLDS)} worlds.")
-        else:
-            print("Worlds already seeded, skipping insert.")
+        before = set(db.execute(select(World.slug)).scalars().all())
+        seed_worlds(db)
+        after = set(db.execute(select(World.slug)).scalars().all())
+        added = after - before
+        print(f"Added {len(added)} world(s): {sorted(added) or 'none'}. Total: {len(after)}.")
 
         print_similarity_matrix(db)
     finally:

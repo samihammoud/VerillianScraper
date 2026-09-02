@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from src.config.settings import settings
 from src.db.models import CrawlQuery, Post, World
+from src.services.crawl_config import load_query_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -49,24 +50,6 @@ _RESPONSE_SCHEMA = {
         },
     },
 }
-
-INSTRUCTION = f"""\
-You choose the next {QUERIES_PER_ROUND} TikTok search queries for a crawler that is
-trying to find as many distinct creator accounts inside one topic world as possible.
-
-Return exactly {QUERIES_PER_ROUND} queries: {N_EXPLOIT} with intent "exploit" and {N_EXPLORE} with intent "explore".
-
-- exploit: go deeper on terms that actually appeared in the videos this round.
-  Ground these in the observed product, format and topic terms listed below —
-  not in your own assumptions about the world.
-- explore: reach for an adjacent corner of the world that no past query covers.
-- Never reword a past query. A query that means the same thing as one already in
-  the list is wasted, even with different wording.
-- A past query with 0 handles found is a dead vein. Do not go near it again.
-- Queries are what a person types into TikTok search: short, lowercase, no
-  punctuation, no boolean operators, no hashtags.
-"""
-
 
 def _normalize(text: str) -> str:
     return re.sub(r"[^a-z0-9 ]", "", text.lower()).strip()
@@ -135,6 +118,9 @@ def _build_prompt(db: Session, world_slug: str, round_no: int) -> str:
 def generate(db: Session, world_slug: str, round_no: int) -> list[CrawlQuery]:
     """One text call; insert the surviving queries as `round_no`, status pending."""
     prompt = _build_prompt(db, world_slug, round_no)
+    instruction = load_query_prompt(world_slug).format(
+        QUERIES_PER_ROUND=QUERIES_PER_ROUND, N_EXPLOIT=N_EXPLOIT, N_EXPLORE=N_EXPLORE
+    )
 
     try:
         response = _client.models.generate_content(
@@ -142,7 +128,7 @@ def generate(db: Session, world_slug: str, round_no: int) -> list[CrawlQuery]:
             contents=[prompt],
             config=types.GenerateContentConfig(
                 temperature=1,  # the whole job is variety; 0 makes rounds converge
-                system_instruction=INSTRUCTION,
+                system_instruction=instruction,
                 response_mime_type="application/json",
                 response_schema=_RESPONSE_SCHEMA,
             ),

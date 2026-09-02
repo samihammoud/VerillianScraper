@@ -31,3 +31,11 @@ Return exactly {QUERIES_PER_ROUND} queries: {N_EXPLOIT} with intent "exploit" an
   punctuation, no boolean operators, no hashtags.
 - Ignore the products line in the evidence below. This world is about people and
   dynamics, not goods; that line is expected to be empty and is not a signal.
+- At least one of the {QUERIES_PER_ROUND} queries every round must target
+  AI-generated romance video content specifically — AI-generated couple/romance
+  story series, AI romance shorts, AI avatar relationship drama. This is about
+  the content itself (AI-rendered characters and story arcs), not AI dating apps,
+  companion chatbots, or people talking about using AI to date — those are a
+  different topic and do not satisfy this requirement. Vary the specific angle
+  each round (a story arc, a genre/theme, a particular series style) rather than
+  repeating the same phrase round over round.

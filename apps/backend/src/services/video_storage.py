@@ -4,11 +4,13 @@ No DB column: the path is derivable from the post id, so "has a video on disk"
 is a stat() call, not a row to keep in sync. A missing file just means the post
 is skipped by the VLM claim query.
 
-Unlike covers, these are large and disposable — describe_posts clears the
-directory on entry so orphans from a dead run don't accumulate.
+Unlike covers, these are large and disposable — but only once a post is truly
+done with (described, or out of retries). describe_posts() deletes per-post via
+delete_video() as each post reaches a terminal state, never the whole directory
+at once — a blanket sweep would strand any post that failed this pass but still
+had retries left, with no video to retry from and nothing to re-download it.
 """
 
-import shutil
 from pathlib import Path
 from uuid import UUID
 
@@ -26,5 +28,5 @@ def store_video(post_id: UUID, data: bytes) -> Path:
     return path
 
 
-def clear_videos() -> None:
-    shutil.rmtree(VIDEOS_DIR, ignore_errors=True)
+def delete_video(post_id: UUID) -> None:
+    video_path(post_id).unlink(missing_ok=True)

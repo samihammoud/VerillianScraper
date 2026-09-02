@@ -1,4 +1,4 @@
-.PHONY: install build test lint clean reset-data reseed-worlds ingest enrich route seed-crawl crawl smoke-test analyze overview ui serve dev
+.PHONY: install build test lint clean reset-data reseed-worlds seed-world ingest enrich route seed-crawl crawl smoke-test analyze overview ui serve dev
 
 BACKEND := apps/backend
 PY := $(BACKEND)/.venv/bin/python
@@ -37,11 +37,16 @@ reseed-worlds:
 		-c "TRUNCATE topology.worlds CASCADE;"
 	cd $(BACKEND) && $(PY) -m src.scripts.seed_worlds
 
+# Additive: adds any WORLDS entries not already in topology.worlds. Never
+# touches existing rows/UUIDs — the safe way to add a new world.
+seed-world:
+	cd $(BACKEND) && $(PY) -m src.scripts.seed_worlds
+
 # Bulk pipeline, independently runnable/re-runnable stages:
 # stage 1 — video list + cover bytes only, paginated
 ingest:
-	@test -n "$(HANDLES)" || { echo "usage: make ingest HANDLES=h1,h2 [COUNT=40]"; exit 1; }
-	cd $(BACKEND) && $(PY) -m src.scripts.run_ingest "$(HANDLES)" $(COUNT)
+	@test -n "$(HANDLES)" || { echo "usage: make ingest HANDLES=h1,h2 [COUNT=40] [WORLD=slug]"; exit 1; }
+	cd $(BACKEND) && $(PY) -m src.scripts.run_ingest "$(HANDLES)" $(COUNT) "$(if $(filter command line,$(origin WORLD)),$(WORLD),)"
 
 # stage 2 — comments + VLM descriptions, backfilled over whatever still lacks them
 enrich:
