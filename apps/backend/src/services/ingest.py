@@ -71,7 +71,13 @@ def _fetch_video(post: dict) -> None:
         logger.warning("video fetch failed for post=%s: %s", post["id"], exc)
 
 
-def ingest_account(db: Session, handle: str, count: int, discovered_by_world: str | None = None) -> UUID | None:
+def ingest_account(
+    db: Session,
+    handle: str,
+    count: int,
+    discovered_by_world: str | None = None,
+    discovered_by_query_id: UUID | None = None,
+) -> UUID | None:
     """Fetch an account's video list (single call, no pagination) and video bytes only.
 
     No comments, no VLM — see enrich.py/vision.py. Returns the account id.
@@ -87,6 +93,7 @@ def ingest_account(db: Session, handle: str, count: int, discovered_by_world: st
     for post in posts_data:
         post["id"] = uuid.uuid4()
         post["discovered_by_world"] = discovered_by_world
+        post["discovered_by_query_id"] = discovered_by_query_id
 
     existing_ids = get_existing_post_external_ids(db, account_data["platform"], account_data["external_id"])
     new_posts = [post for post in posts_data if post["external_id"] not in existing_ids]

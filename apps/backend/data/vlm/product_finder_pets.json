@@ -1,0 +1,78 @@
+{
+  "type": "object",
+  "required": ["summary", "hook", "transcript", "on_screen_text", "format",
+               "format_traits", "setting", "topics", "products", "entities",
+               "audio", "creator_on_camera", "cta", "confidence"],
+  "propertyOrdering": ["summary", "hook", "transcript", "on_screen_text", "format",
+                       "format_traits", "setting", "topics", "products", "entities",
+                       "audio", "creator_on_camera", "cta", "confidence"],
+  "properties": {
+    "summary": {"type": "string",
+                "description": "One sentence: what happens in the video."},
+    "hook": {"type": "string", "nullable": true,
+             "description": "Verbatim spoken line and/or on-screen text in the first 3 seconds."},
+    "transcript": {"type": "string", "nullable": true,
+                   "description": "Verbatim spoken words in order. null if no speech."},
+    "on_screen_text": {"type": "array", "items": {"type": "string"},
+                       "description": "Every distinct text overlay, verbatim, in order."},
+
+    "format": {"type": "string",
+               "description": "2-4 words, lowercase noun phrase, for how the video is constructed - not what it is about. Examples: 'voiceover product demo', 'green screen reaction', 'silent before after', 'unboxing haul'."},
+    "format_traits": {"type": "array", "items": {"type": "string"},
+                      "description": "0-3 further 1-3 word lowercase traits. Examples: 'fast cuts', 'trending audio', 'text only', 'asmr', 'split screen', 'single take'."},
+    "setting": {"type": "string",
+                "description": "2-4 words, lowercase noun phrase. Examples: 'kitchen counter', 'dog park', 'vet waiting room'."},
+    "topics": {"type": "array", "items": {"type": "string"},
+               "description": "2-5 subjects of the video, each a 2-4 word lowercase noun phrase."},
+
+    "products": {
+      "type": "array",
+      "description": "Physical products shown or named. Empty if none.",
+      "items": {
+        "type": "object",
+        "required": ["name", "brand", "prominence", "first_seen_sec"],
+        "propertyOrdering": ["name", "brand", "prominence", "first_seen_sec"],
+        "properties": {
+          "name": {"type": "string",
+                   "description": "2-4 words, lowercase noun phrase for the object itself, no brand. Examples: 'ceramic slow feeder bowl', 'silicone lick mat'."},
+          "brand": {"type": "string", "nullable": true,
+                    "description": "Only if legible on screen or spoken aloud. Never inferred."},
+          "prominence": {"type": "string", "enum": ["hero", "incidental"]},
+          "first_seen_sec": {"type": "number"}
+        }
+      }
+    },
+    "entities": {
+      "type": "object",
+      "required": ["people", "brands", "places", "organizations"],
+      "propertyOrdering": ["people", "brands", "places", "organizations"],
+      "properties": {
+        "people": {"type": "array", "items": {"type": "string"},
+                   "description": "Named people mentioned or shown, verbatim. Not the creator unless named."},
+        "brands": {"type": "array", "items": {"type": "string"},
+                   "description": "Brands named aloud or legible on screen, verbatim."},
+        "places": {"type": "array", "items": {"type": "string"},
+                   "description": "Cities, countries, regions, or venues named or clearly shown by signage, verbatim."},
+        "organizations": {"type": "array", "items": {"type": "string"},
+                          "description": "Companies, clinics, shelters, retailers named, verbatim."}
+      }
+    },
+    "audio": {
+      "type": "object",
+      "required": ["kind", "spoken_language", "speaker_count"],
+      "propertyOrdering": ["kind", "spoken_language", "speaker_count"],
+      "properties": {
+        "kind": {"type": "string",
+                 "enum": ["direct_speech", "voiceover", "music_only", "ambient", "silent"]},
+        "spoken_language": {"type": "string", "nullable": true,
+                            "description": "BCP-47 code of the speech, e.g. 'en', 'es'. null if no speech."},
+        "speaker_count": {"type": "integer"}
+      }
+    },
+    "creator_on_camera": {"type": "boolean"},
+    "cta": {"type": "string",
+            "enum": ["comment", "tag_someone", "share", "link_in_bio", "follow", "shop_now", "none"],
+            "description": "'tag_someone' covers 'tag your person', 'send this to him'."},
+    "confidence": {"type": "string", "enum": ["low", "med", "high"]}
+  }
+}

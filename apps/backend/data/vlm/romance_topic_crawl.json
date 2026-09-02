@@ -2,11 +2,11 @@
   "type": "object",
   "required": ["summary", "premise", "hook", "punchline", "transcript", "dialogue",
                "on_screen_text", "format", "format_traits", "setting", "topics",
-               "relationship", "characters", "synthetic", "products", "entities",
+               "relationship", "characters", "synthetic", "pacing", "products", "entities",
                "audio", "creator_on_camera", "estimated_duration_sec", "cta", "confidence"],
   "propertyOrdering": ["summary", "premise", "hook", "punchline", "transcript", "dialogue",
                        "on_screen_text", "format", "format_traits", "setting", "topics",
-                       "relationship", "characters", "synthetic", "products", "entities",
+                       "relationship", "characters", "synthetic", "pacing", "products", "entities",
                        "audio", "creator_on_camera", "estimated_duration_sec", "cta", "confidence"],
   "properties": {
     "summary": {"type": "string",
@@ -111,6 +111,50 @@
                     "description": "The specific artifacts that led to the judgement, each 1-4 lowercase words. Examples: 'warping hands', 'unblinking eyes', 'lips out of sync', 'flat prosody', 'background morphs'. Empty array if none observed."},
         "certainty": {"type": "string", "enum": ["low", "med", "high"],
                       "description": "Confidence in `presenter` specifically. Use 'low' freely - synthetic video is often indistinguishable."}
+      }
+    },
+
+    "pacing": {
+      "type": "object",
+      "required": ["energy_arc", "humor_sincerity", "speaker_dominance",
+                   "expression_beats", "density"],
+      "propertyOrdering": ["energy_arc", "humor_sincerity", "speaker_dominance",
+                           "expression_beats", "density"],
+      "description": "How the video moves. Judgments only - cut counts, fps and duration are measured from the file, not reported here.",
+      "properties": {
+        "energy_arc": {"type": "string",
+          "enum": ["flat", "build_to_punch", "front_loaded", "escalating",
+                   "calm_after_spike", "not_applicable"],
+          "description": "Shape of intensity across the video."},
+        "humor_sincerity": {"type": "string",
+          "enum": ["pure_bit", "mostly_funny", "balanced", "mostly_sincere",
+                   "pure_sincere", "not_applicable"],
+          "description": "Ordinal, not a percentage. 'balanced' means the video genuinely turns on both."},
+        "speaker_dominance": {"type": "string",
+          "enum": ["first_dominant", "first_leads", "balanced", "second_leads",
+                   "second_dominant", "not_applicable"],
+          "description": "Who carries the exchange, by speaking time. 'first' is whoever speaks first in `dialogue`. not_applicable if fewer than two speakers."},
+        "density": {"type": "string",
+          "enum": ["sparse", "conversational", "rapid", "overwhelming"],
+          "description": "Subjective information rate - words, text and cuts together, as a viewer experiences it."},
+        "expression_beats": {
+          "type": "array",
+          "description": "Up to 6 moments where a face visibly changes expression. Empty if no face is visible. Do not invent beats to fill the array.",
+          "items": {
+            "type": "object",
+            "required": ["at_sec", "speaker", "expression"],
+            "propertyOrdering": ["at_sec", "speaker", "expression"],
+            "properties": {
+              "at_sec": {"type": "number"},
+              "speaker": {"type": "string",
+                "description": "Role label matching `dialogue[].speaker` where possible."},
+              "expression": {"type": "string",
+                "enum": ["deadpan", "smirk", "laugh", "eye_roll", "shock",
+                         "annoyed", "soft_affection", "hurt", "knowing_look",
+                         "unbothered"]}
+            }
+          }
+        }
       }
     },
 

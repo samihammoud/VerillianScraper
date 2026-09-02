@@ -79,7 +79,10 @@ def run_query(db: Session, query: CrawlQuery) -> tuple[int, int]:
 
     for handle in handles[:ACCOUNTS_PER_QUERY]:
         try:
-            ingest_account(db, handle, POSTS_PER_ACCOUNT, discovered_by_world=query.world_slug)
+            ingest_account(
+                db, handle, POSTS_PER_ACCOUNT,
+                discovered_by_world=query.world_slug, discovered_by_query_id=query.id,
+            )
         except Exception as exc:
             logger.warning("ingest failed for %s: %s", handle, exc)
 

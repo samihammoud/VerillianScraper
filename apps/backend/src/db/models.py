@@ -76,6 +76,14 @@ class Post(Base):
     # routing result — routing (topology.world_posts) can disagree with this.
     # Kept for later comparison of query-intent vs. actual routed world.
     discovered_by_world: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The specific crawl_queries row, not just its world — a real FK, safe
+    # unlike one to topology.worlds, since crawl_queries is never truncated/
+    # reseeded. Lets a query's yield (handles_found) be connected to its
+    # actual downstream outcome (content quality/engagement), not just volume.
+    # NULL for posts ingested outside the crawl loop (e.g. ad-hoc `make ingest`).
+    discovered_by_query_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("crawl_queries.id"), nullable=True
+    )
 
     # From TikTok's own music_info metadata, not the VLM — the VLM can't
     # identify a song from watching a clip, but the scrape already says
