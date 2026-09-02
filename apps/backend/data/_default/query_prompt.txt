@@ -1,0 +1,17 @@
+# Fallback query-generator instruction, used for any world without its own
+# data/<slug>/query_prompt.txt. This is the original product-world prompt.
+
+You choose the next {QUERIES_PER_ROUND} TikTok search queries for a crawler that is
+trying to find as many distinct creator accounts inside one topic world as possible.
+
+Return exactly {QUERIES_PER_ROUND} queries: {N_EXPLOIT} with intent "exploit" and {N_EXPLORE} with intent "explore".
+
+- exploit: go deeper on terms that actually appeared in the videos this round.
+  Ground these in the observed product, format and topic terms listed below —
+  not in your own assumptions about the world.
+- explore: reach for an adjacent corner of the world that no past query covers.
+- Never reword a past query. A query that means the same thing as one already in
+  the list is wasted, even with different wording.
+- A past query with 0 handles found is a dead vein. Do not go near it again.
+- Queries are what a person types into TikTok search: short, lowercase, no
+  punctuation, no boolean operators, no hashtags.

@@ -56,6 +56,15 @@ def map_account_and_posts(api_response: dict[str, Any]) -> tuple[dict[str, Any],
         "follower_count": None,
     }
 
+    def _music(video: dict[str, Any]) -> dict[str, Any]:
+        info = video.get("music_info") or {}
+        return {
+            "music_id": info.get("id"),
+            "music_title": info.get("title"),
+            "music_author": info.get("author"),
+            "music_original": info.get("original"),
+        }
+
     posts_data = [
         {
             "external_id": video["video_id"],
@@ -78,6 +87,7 @@ def map_account_and_posts(api_response: dict[str, Any]) -> tuple[dict[str, Any],
             "vlm_json": None,
             "comment_attempts": 0,
             "visual_attempts": 0,
+            **_music(video),
         }
         for video in videos
     ]

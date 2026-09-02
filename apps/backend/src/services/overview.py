@@ -18,7 +18,7 @@ from sqlalchemy.dialects.postgresql import insert
 from src.db.models import Post, PostTerm, TermEmbedding, World, WorldPost, WorldTermStat
 from src.services.clustering import cluster_by_threshold, cosine_similarity_matrix
 from src.services.embeddings import embed_batch
-from src.services.terms import CLUSTERED_FACETS, RAW_FACETS, extract_terms, normalize
+from src.services.terms import CLUSTERED_FACETS, RAW_FACETS, extract_scrape_terms, extract_terms, normalize
 
 CLUSTER_THRESHOLD = 0.86  # tuned once in phase 2 by eyeballing merges against `variants`
 MIN_POSTS = 5
@@ -34,12 +34,13 @@ def world_by_slug(db, world_slug: str) -> World:
 
 
 def _extract_and_store(db, world: World) -> list[tuple]:
-    """Steps 1-2: pull this world's posts, extract_terms per post, replace
-    this world's post_terms wholesale. Returns the raw (post_id, account_id,
-    views, vlm_json) rows so the caller doesn't have to re-query for the
-    world-median step."""
+    """Steps 1-2: pull this world's posts, extract_terms (VLM-derived) +
+    extract_scrape_terms (TikTok's own music_info metadata) per post, replace
+    this world's post_terms wholesale."""
     posts = db.execute(
-        select(Post.id, Post.account_id, Post.views, Post.vlm_json)
+        select(
+            Post.id, Post.account_id, Post.views, Post.vlm_json, Post.music_original, Post.music_author
+        )
         .join(WorldPost, WorldPost.post_id == Post.id)
         .where(WorldPost.world_id == world.id)
     ).all()
@@ -47,9 +48,10 @@ def _extract_and_store(db, world: World) -> list[tuple]:
     db.execute(delete(PostTerm).where(PostTerm.world_id == world.id))
 
     rows = []
-    for post_id, account_id, views, vlm_json in posts:
+    for post_id, account_id, views, vlm_json, music_original, music_author in posts:
         metric = float(np.log1p(views)) if views else None
-        for term in extract_terms(vlm_json):
+        post_terms = extract_terms(vlm_json) + extract_scrape_terms(music_original, music_author)
+        for term in post_terms:
             norm_term = term.raw_term if term.facet in RAW_FACETS else normalize(term.raw_term)
             rows.append(
                 {
@@ -135,7 +137,26 @@ def canonicalize(db, world: World) -> None:
         _canonicalize_facet(db, world, facet, norm_term_counts)
 
 
-def _aggregate(db, world: World, world_median: float) -> list[dict]:
+def account_medians(db, world: World) -> dict:
+    """Per-account baseline: median log1p(views) over each account's own
+    posts in this world (same eligible population as world_median — must
+    have vlm_json and views). Used to compute account_lift, which asks 'does
+    this term outperform for the accounts that actually post it', instead of
+    'does it outperform the whole world' — a term can look like a winner on
+    world lift purely because one viral account happens to feature it a lot."""
+    rows = db.execute(
+        select(Post.account_id, Post.views, Post.vlm_json)
+        .join(WorldPost, WorldPost.post_id == Post.id)
+        .where(WorldPost.world_id == world.id)
+    ).all()
+    by_account: dict = defaultdict(list)
+    for account_id, views, vlm_json in rows:
+        if vlm_json and views:
+            by_account[account_id].append(float(np.log1p(views)))
+    return {account_id: float(np.median(metrics)) for account_id, metrics in by_account.items()}
+
+
+def _aggregate(db, world: World, world_median: float, account_median: dict) -> list[dict]:
     """Step 6: group post_terms by (facet, canon_term), apply the support
     floor, compute lift. Incidental products are excluded entirely from the
     default product ranking — a lamp that happens to be in frame is not what
@@ -153,7 +174,7 @@ def _aggregate(db, world: World, world_median: float) -> list[dict]:
     ).all()
 
     groups: dict[tuple[str, str], dict] = defaultdict(
-        lambda: {"post_ids": set(), "account_ids": set(), "n_hero": 0, "metrics": [], "variants": set()}
+        lambda: {"post_ids": set(), "account_ids": set(), "n_hero": 0, "metrics": [], "account_deltas": [], "variants": set()}
     )
     for facet, canon_term, post_id, account_id, prominence, metric, raw_term in rows:
         if facet == "product" and prominence == "incidental":
@@ -164,6 +185,8 @@ def _aggregate(db, world: World, world_median: float) -> list[dict]:
         if prominence == "hero":
             g["n_hero"] += 1
         g["metrics"].append(metric)
+        if account_id in account_median:
+            g["account_deltas"].append(metric - account_median[account_id])
         g["variants"].add(raw_term)
 
     stats = []
@@ -174,6 +197,7 @@ def _aggregate(db, world: World, world_median: float) -> list[dict]:
             continue
         median_m = float(np.median(g["metrics"]))
         lift = median_m - world_median
+        account_lift = float(np.median(g["account_deltas"])) if g["account_deltas"] else 0.0
         stats.append(
             {
                 "world_id": world.id,
@@ -185,6 +209,8 @@ def _aggregate(db, world: World, world_median: float) -> list[dict]:
                 "median_m": median_m,
                 "lift": lift,
                 "view_ratio": float(np.exp(lift)),
+                "account_lift": account_lift,
+                "account_view_ratio": float(np.exp(account_lift)),
                 "variants": sorted(g["variants"]),
             }
         )
@@ -215,7 +241,8 @@ def rollup(db, world_slug: str) -> list[dict]:
     canonicalize(db, world)
 
     median = world_median(db, world)
-    stats = _aggregate(db, world, median)
+    by_account = account_medians(db, world)
+    stats = _aggregate(db, world, median, by_account)
 
     if stats:
         median_lift = float(np.median([s["lift"] for s in stats]))

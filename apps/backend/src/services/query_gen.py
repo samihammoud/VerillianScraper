@@ -72,18 +72,15 @@ def _normalize(text: str) -> str:
     return re.sub(r"[^a-z0-9 ]", "", text.lower()).strip()
 
 
-def _evidence(db: Session) -> str:
-    """Counter over the extracted vlm_json — what the videos actually contained.
-
-    ponytail: world-blind, unlike the ledger above. Nothing links a post back to
-    the query that found it, and routing (which is what decides a post's world)
-    is deliberately a separate command that has not run yet when this executes —
-    so at generation time a post genuinely has no world to filter on. Harmless
-    while one world is crawled at a time; the moment two are, this section
-    starts describing the wrong corpus. Upgrade path is posts.found_by_query_id,
-    not a wider join.
-    """
-    rows = db.execute(select(Post.vlm_json).where(Post.vlm_json.is_not(None))).scalars().all()
+def _evidence(db: Session, world_slug: str) -> str:
+    """Counter over the extracted vlm_json — what this world's videos actually
+    contained, cumulative across every past round (not just the last one) —
+    a term that stopped appearing is itself informative, so there's no
+    round filter, only a world filter via Post.discovered_by_world (stamped
+    at ingest time, see ingest.py)."""
+    rows = db.execute(
+        select(Post.vlm_json).where(Post.vlm_json.is_not(None), Post.discovered_by_world == world_slug)
+    ).scalars().all()
 
     formats: Counter = Counter()
     products: Counter = Counter()
@@ -105,7 +102,7 @@ def _evidence(db: Session) -> str:
 
     return "\n".join(
         [
-            "THIS ROUND'S VIDEOS CONTAINED:",
+            "OBSERVED SO FAR IN THIS WORLD:",
             render("formats ", formats),
             render("products", products),
             render("topics  ", topics),
@@ -130,7 +127,7 @@ def _build_prompt(db: Session, world_slug: str, round_no: int) -> str:
             "PAST QUERIES (round, query, handles, new handles):",
             *lines,
             "",
-            _evidence(db),
+            _evidence(db, world_slug),
         ]
     )
 

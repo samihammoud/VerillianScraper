@@ -75,7 +75,7 @@ function TermPanel({ slug, facet, label, onSelectTerm }) {
       >
         <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
         <div className="mono" style={{ fontSize: 10 }}>
-          {["lift", "volume"].map((s) => (
+          {["lift", "volume", "account"].map((s) => (
             <span
               key={s}
               onClick={() => setSort(s)}
@@ -107,7 +107,7 @@ function TermPanel({ slug, facet, label, onSelectTerm }) {
             }}
           >
             <span className="mono" style={{ fontSize: 12, color: "var(--accent)", width: 46, flexShrink: 0 }}>
-              {t.view_ratio.toFixed(1)}x
+              {(sort === "volume" ? t.volume_ratio : sort === "account" ? t.account_view_ratio : t.view_ratio).toFixed(1)}x
             </span>
             <span style={{ fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {t.canon_term}
@@ -123,6 +123,62 @@ function TermPanel({ slug, facet, label, onSelectTerm }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function AccountsPanel({ slug }) {
+  const { data } = useJson(slug ? `${API}/worlds/${slug}/accounts` : null);
+  const accounts = data || [];
+  const [openHandle, setOpenHandle] = useState(null);
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+      {accounts.map((a) => (
+        <div key={a.handle} style={{ marginBottom: 18, borderBottom: "1px solid var(--grid)", paddingBottom: 14 }}>
+          <div
+            onClick={() => setOpenHandle(openHandle === a.handle ? null : a.handle)}
+            style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+          >
+            <span style={{ fontSize: 14, fontWeight: 600 }}>@{a.handle}</span>
+            <span className="mono" style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              {a.n_peaks} peaks / {a.patterns.length} pattern{a.patterns.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          {openHandle === a.handle &&
+            a.patterns.map((p, i) => (
+              <div key={i} style={{ marginTop: 10, marginLeft: 4 }}>
+                <div className="mono" style={{ fontSize: 10, color: "var(--accent)" }}>
+                  {p.size} posts · {p.products.slice(0, 4).join(", ") || "no product visible"}
+                </div>
+                {p.top_topics.length > 0 && (
+                  <div className="mono" style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>
+                    topics: {p.top_topics.map(([t, n]) => `${t} (${n})`).join(", ")}
+                  </div>
+                )}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                  {p.posts.map((post) => (
+                    <a
+                      key={post.video_url}
+                      href={post.video_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mono"
+                      style={{ fontSize: 10, color: "var(--text-muted)", textDecoration: "none" }}
+                    >
+                      {(post.views || 0).toLocaleString()}v ↗
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ))}
+        </div>
+      ))}
+      {data && !accounts.length && (
+        <div className="mono" style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          no accounts with a repeating peak pattern yet
+        </div>
+      )}
     </div>
   );
 }
@@ -233,6 +289,7 @@ export default function WorldsOverview() {
   const { data: worlds } = useJson(`${API}/worlds`);
   const [slug, setSlug] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [view, setView] = useState("terms");
 
   useEffect(() => {
     if (worlds?.length && !slug) setSlug(worlds[0].slug);
@@ -274,17 +331,36 @@ export default function WorldsOverview() {
             </option>
           ))}
         </select>
+
+        <div className="mono" style={{ fontSize: 10, marginLeft: "auto" }}>
+          {["terms", "accounts"].map((v) => (
+            <span
+              key={v}
+              onClick={() => setView(v)}
+              style={{
+                cursor: "pointer",
+                marginLeft: 10,
+                color: view === v ? "var(--accent)" : "var(--text-dim)",
+                textDecoration: view === v ? "underline" : "none",
+              }}
+            >
+              {v.toUpperCase()}
+            </span>
+          ))}
+        </div>
       </div>
 
       <CoverageStrip coverage={coverageSource?.coverage} />
 
-      {slug && (
+      {slug && view === "terms" && (
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
           <TermPanel slug={slug} facet="product" label="Winning Products" onSelectTerm={setSelected} />
           <TermPanel slug={slug} facet="format" label="Winning Formats" onSelectTerm={setSelected} />
           <TermPanel slug={slug} facet="topic" label="Winning Topics" onSelectTerm={setSelected} />
         </div>
       )}
+
+      {slug && view === "accounts" && <AccountsPanel slug={slug} />}
 
       <DrilldownGrid slug={slug} selected={selected} onClose={() => setSelected(null)} />
     </div>

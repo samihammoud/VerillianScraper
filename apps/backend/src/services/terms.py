@@ -20,8 +20,8 @@ from dataclasses import dataclass
 #    must stay verbatim distinct ("Pingu" and "Penguin" are not the same brand)
 #  - RAW: closed enums; canon_term == raw_term untouched, no normalize either
 CLUSTERED_FACETS = {"product", "format", "format_trait", "topic", "setting"}
-NORMALIZE_ONLY_FACETS = {"brand"}
-RAW_FACETS = {"cta", "audio_kind"}
+NORMALIZE_ONLY_FACETS = {"brand", "music_author"}
+RAW_FACETS = {"cta", "audio_kind", "audio_source"}
 ALL_FACETS = CLUSTERED_FACETS | NORMALIZE_ONLY_FACETS | RAW_FACETS
 
 
@@ -120,6 +120,20 @@ def extract_terms(vlm_json: dict | None) -> list[Term]:
     return _dedupe(terms)
 
 
+def extract_scrape_terms(music_original: bool | None, music_author: str | None) -> list[Term]:
+    """Audio provenance from TikTok's own music_info metadata (posts.music_*),
+    not the VLM — Gemini can't identify a song from watching a clip, but the
+    scrape already says whether the sound is original or a licensed/trending
+    track, and who made it. Separate from extract_terms since the input isn't
+    vlm_json; low_conf doesn't apply (nothing here comes from the VLM)."""
+    terms: list[Term] = []
+    if music_original is not None:
+        terms.append(Term("audio_source", "original_audio" if music_original else "licensed_audio"))
+    if music_author and music_original is False:
+        terms.append(Term("music_author", music_author))
+    return terms
+
+
 def _self_check() -> None:
     assert normalize("Slow Feeder Bowl") == "slow feeder bowl"
     assert normalize("slow feeder bowls") == "slow feeder bowl"
@@ -172,6 +186,15 @@ def _self_check() -> None:
 
     assert extract_terms(None) == []
     assert extract_terms({}) == []
+
+    # licensed track: both audio_source and music_author
+    licensed = extract_scrape_terms(music_original=False, music_author="Imagine Dragons")
+    assert {t.facet: t.raw_term for t in licensed} == {"audio_source": "licensed_audio", "music_author": "Imagine Dragons"}
+    # original sound: audio_source only — no "artist" for a creator's own sound
+    original = extract_scrape_terms(music_original=True, music_author=None)
+    assert {t.facet: t.raw_term for t in original} == {"audio_source": "original_audio"}
+    # unknown (scrape didn't return music_info): nothing
+    assert extract_scrape_terms(music_original=None, music_author=None) == []
 
     print("terms self-check ok")
 

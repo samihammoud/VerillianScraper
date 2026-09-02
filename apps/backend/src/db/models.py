@@ -77,6 +77,16 @@ class Post(Base):
     # Kept for later comparison of query-intent vs. actual routed world.
     discovered_by_world: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # From TikTok's own music_info metadata, not the VLM — the VLM can't
+    # identify a song from watching a clip, but the scrape already says
+    # exactly which track and whether it's original vs. licensed/trending.
+    # music_author is only meaningful when music_original is False; an
+    # original sound has no separate "artist".
+    music_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    music_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    music_author: Mapped[str | None] = mapped_column(Text, nullable=True)
+    music_original: Mapped[bool | None] = mapped_column(nullable=True)
+
     account: Mapped["Account"] = relationship(back_populates="posts")
 
 
@@ -187,6 +197,8 @@ class WorldTermStat(Base):
     median_m: Mapped[float] = mapped_column(Float, nullable=False)
     lift: Mapped[float] = mapped_column(Float, nullable=False)
     view_ratio: Mapped[float] = mapped_column(Float, nullable=False)
+    account_lift: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
+    account_view_ratio: Mapped[float] = mapped_column(Float, nullable=False, default=1.0, server_default="1")
     variants: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
     computed_at: Mapped[datetime.datetime] = mapped_column(default=datetime.datetime.utcnow)
 

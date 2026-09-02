@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 
 from src.db.models import Account, Post, PostTerm, World, WorldPost, WorldTermStat
 from src.db.session import SessionLocal
+from src.services.account_patterns import account_patterns
 from src.services.overview import MIN_POSTS, world_median
 
 router = APIRouter(prefix="/worlds", tags=["worlds"])
@@ -63,7 +64,7 @@ def list_worlds() -> list[dict]:
 def world_overview(
     slug: str,
     facet: str = Query(...),
-    sort: str = Query("lift", pattern="^(lift|volume)$"),
+    sort: str = Query("lift", pattern="^(lift|volume|account)$"),
     min_posts: int = Query(MIN_POSTS, ge=1),
     limit: int = Query(25, ge=1, le=200),
 ) -> dict:
@@ -97,7 +98,16 @@ def world_overview(
         stmt = select(WorldTermStat).where(
             WorldTermStat.world_id == world.id, WorldTermStat.facet == facet, WorldTermStat.n_posts >= min_posts
         )
-        stmt = stmt.order_by(WorldTermStat.n_posts.desc() if sort == "volume" else WorldTermStat.lift.desc())
+        facet_n_posts = [row.n_posts for row in db.execute(stmt).scalars()]
+        median_n_posts = float(np.median(facet_n_posts)) if facet_n_posts else 0.0
+
+        if sort == "volume":
+            order = WorldTermStat.n_posts.desc()
+        elif sort == "account":
+            order = WorldTermStat.account_lift.desc()
+        else:
+            order = WorldTermStat.lift.desc()
+        stmt = stmt.order_by(order)
         term_rows = db.execute(stmt.limit(limit)).scalars().all()
 
         return {
@@ -118,11 +128,24 @@ def world_overview(
                     "n_hero": t.n_hero,
                     "view_ratio": t.view_ratio,
                     "lift": t.lift,
+                    "volume_ratio": (t.n_posts / median_n_posts) if median_n_posts else 0.0,
+                    "account_view_ratio": t.account_view_ratio,
+                    "account_lift": t.account_lift,
                     "variants": t.variants,
                 }
                 for t in term_rows
             ],
         }
+    finally:
+        db.close()
+
+
+@router.get("/{slug}/accounts")
+def world_accounts(slug: str) -> list[dict]:
+    db = SessionLocal()
+    try:
+        world = _get_world(db, slug)
+        return account_patterns(db, world)
     finally:
         db.close()
 
