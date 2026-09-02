@@ -12,7 +12,6 @@ from sqlalchemy import select
 
 from src.db.models import World
 from src.db.session import SessionLocal
-from src.services.crawl_config import load_world
 from src.services.embeddings import embed
 
 WORLDS = [
@@ -159,7 +158,32 @@ WORLDS = [
             "stroller comparison after 6 months of use",
         ],
     },
-    load_world("romance"),
+    {
+        "slug": "romance",
+        "name": "Romance & Relationships",
+        "description": (
+            "Romantic relationships between partners and the discourse around them: dating and "
+            "courtship, situationships and defining the relationship, long distance, moving in "
+            "together, jealousy and trust, money and chores, in-laws and friends, communication "
+            "habits, breakups and getting back together. Covers both scripted couple content — "
+            "skits, POV dialogue, two-person reenactments of a relationship moment — and commentary "
+            "about modern dating: advice, hot takes, therapist explainers, podcast clips. Distinct "
+            "from Parenting & Baby: content about how two partners relate to each other is Romance, "
+            "content centered on raising a child is Parenting, even when both partners appear. "
+            "Distinct from Health & Wellness: attachment styles and emotional patterns framed as "
+            "relationship dynamics are Romance, while therapy, mental health treatment and self-care "
+            "framed around one person's own wellbeing are Health. This world is about people and "
+            "their dynamics rather than physical goods — a Romance post typically shows no product "
+            "at all."
+        ),
+        "example_snippets": [
+            "pov your girlfriend asks if you would still love her",
+            "he takes four hours to reply and says he was just busy",
+            "green flags i ignored because i was scared of being single",
+            "relationship therapist explains why he pulls away",
+            "we argue about the dishes more than anything serious",
+        ],
+    },
 ]
 
 

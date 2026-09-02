@@ -24,28 +24,7 @@ def load_query_prompt(slug: str) -> str:
     return "\n".join(l for l in path.read_text().splitlines() if not l.startswith("#")).strip()
 
 
-def load_world(slug: str) -> dict:
-    """Blocks separated by blank lines: name, description, snippets."""
-    blocks = [b.strip() for b in (DATA_DIR / slug / "world.txt").read_text().split("\n\n") if b.strip()]
-    if len(blocks) != 3:
-        raise ValueError(f"{slug}/world.txt: expected 3 blank-line blocks, got {len(blocks)}")
-    name, description, snippets = blocks
-    return {
-        "slug": slug,
-        "name": name,
-        "description": " ".join(description.split()),  # unwrap the hand-wrapped paragraph
-        "example_snippets": snippets.splitlines(),
-    }
-
-
 def _self_check() -> None:
-    world = load_world("romance")
-    assert set(world.keys()) == {"slug", "name", "example_snippets", "description"}
-    assert world["slug"] == "romance"
-    assert world["name"] == "Romance & Relationships"
-    assert "\n" not in world["description"]  # hand-wrapped paragraph must unwrap to one line
-    assert len(world["example_snippets"]) == 5
-
     seeds = load_seed_queries("romance")
     assert len(seeds) == 10
     assert all(seeds)  # no blank/comment lines leaked through

@@ -31,6 +31,10 @@ Return exactly {QUERIES_PER_ROUND} queries: {N_EXPLOIT} with intent "exploit" an
   punctuation, no boolean operators, no hashtags.
 - Ignore the products line in the evidence below. This world is about people and
   dynamics, not goods; that line is expected to be empty and is not a signal.
+- The formats line is informational only — it describes how existing videos are
+  shot (talking head, podcast clip, skit), not something a TikTok search can
+  target. Never build a query around a format term; only topic terms are
+  exploitable.
 - At least one of the {QUERIES_PER_ROUND} queries every round must target
   AI-generated romance video content specifically — AI-generated couple/romance
   story series, AI romance shorts, AI avatar relationship drama. This is about
