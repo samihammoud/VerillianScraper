@@ -31,35 +31,35 @@ already carry the relationship signal.
 extract_terms in terms.py is the mirror of flatten_for_blob — same input,
 different projection. When SCHEMA_VERSION changes here, check there too.
 
-RESPONSE_SCHEMA lives under data/vlm/<name>.json, not inline — it's the one
-part of this contract most likely to get hand-edited field-by-field (a new
-enum value, a tweaked description), and every string in it is prompt text
-Gemini reads, not documentation. describe_posts() stays world-blind — this
-is not a per-post choice, routing hasn't run yet at claim time. ACTIVE_SCHEMA
-below is the one deliberate, whole-process choice of which crawl this run is
-tailored for; change it and restart to switch. Two named schemas exist:
-  - romance_topic_crawl: the dialogue/relationship layer (premise, dialogue,
-    relationship, characters, synthetic) for the romance world's two-person
-    skit/dialogue content.
-  - product_finder_pets: the leaner product-discovery shape (no dialogue/
-    relationship fields) for pets and the other product-centric worlds.
+RESPONSE_SCHEMA lives under data/<world>/crawl/vlm_schema.json, alongside that
+world's query_prompt.txt/seed_queries.txt — it's the one part of this contract
+most likely to get hand-edited field-by-field (a new enum value, a tweaked
+description), and every string in it is prompt text Gemini reads, not
+documentation. describe_posts() stays world-blind — this is not a per-post
+choice, routing hasn't run yet at claim time. ACTIVE_SCHEMA_WORLD below is the
+one deliberate, whole-process choice of which world's crawl bundle this run is
+tailored for; change it and restart to switch. Two schemas exist today:
+  - romance: the dialogue/relationship layer (premise, dialogue, relationship,
+    characters, synthetic) for the romance world's two-person skit/dialogue
+    content.
+  - pets: the leaner product-discovery shape (no dialogue/relationship
+    fields) for pets and the other product-centric worlds.
 """
 
 import json
-from pathlib import Path
+
+from src.services.crawl_config import DATA_DIR
 
 SCHEMA_VERSION = 3
 
-ACTIVE_SCHEMA = "romance_topic_crawl"  # the one thing to change to retarget this whole process at a different crawl
-
-_SCHEMA_DIR = Path(__file__).resolve().parents[2] / "data" / "vlm"
+ACTIVE_SCHEMA_WORLD = "romance"  # the one thing to change to retarget this whole process at a different world's crawl
 
 
-def load_response_schema(name: str) -> dict:
-    return json.loads((_SCHEMA_DIR / f"{name}.json").read_text())
+def load_response_schema(world_slug: str) -> dict:
+    return json.loads((DATA_DIR / world_slug / "crawl" / "vlm_schema.json").read_text())
 
 
-RESPONSE_SCHEMA = load_response_schema(ACTIVE_SCHEMA)
+RESPONSE_SCHEMA = load_response_schema(ACTIVE_SCHEMA_WORLD)
 
 SYSTEM_INSTRUCTION = """\
 You analyze short-form vertical videos and return structured JSON.

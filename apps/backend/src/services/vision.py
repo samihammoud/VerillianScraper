@@ -2,9 +2,12 @@
 
 Takes an already-downloaded file (see video_storage.py), not a URL: the play
 URL is signed and short-lived, and retrying a Gemini failure must never
-re-fetch from TikTok. Output is structured JSON (vision_schema.py) at
-temperature 0; the prose rendering routing actually embeds is derived from it
-by flatten_for_blob.
+re-fetch from TikTok. Every request carries vision_schema.SYSTEM_INSTRUCTION
+and RESPONSE_SCHEMA (structured JSON at temperature 0) — both shared and
+world-blind, not per-post: describe_posts() claims across every world at
+once, and routing hasn't run yet at claim time, so which world a post belongs
+to isn't known here. The prose rendering routing actually embeds is derived
+from the JSON by flatten_for_blob.
 
 The cover-image prompt this module used to hold is gone — a still frame was
 always a stand-in for the video, and the video is now downloaded at ingest.
@@ -25,7 +28,7 @@ from src.config.settings import settings
 from src.db.models import Post
 from src.db.session import SessionLocal
 from src.services.video_storage import delete_video, video_path
-from src.services.vision_schema import GENERATION_CONFIG, flatten_for_blob
+from src.services.vision_schema import GENERATION_CONFIG, SYSTEM_INSTRUCTION, flatten_for_blob
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +133,7 @@ def _upload_video(candidate: dict) -> types.InlinedRequest | None:
     return types.InlinedRequest(
         model=VIDEO_MODEL,
         contents=[types.Part.from_uri(file_uri=file.uri, mime_type="video/mp4")],
-        config=types.GenerateContentConfig(**GENERATION_CONFIG),
+        config=types.GenerateContentConfig(system_instruction=SYSTEM_INSTRUCTION, **GENERATION_CONFIG),
         metadata={"post_id": str(post_id), "file_name": file.name},
     )
 

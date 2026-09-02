@@ -1,8 +1,11 @@
-"""Loads a world's hand-authored crawl inputs from data/<slug>/.
+"""Loads a world's hand-authored crawl inputs from data/<slug>/crawl/.
 
-Text files rather than Python literals because these three are what gets iterated
+Text files rather than Python literals because these are what gets iterated
 on between runs — a bad seed query set is fixed by reading round 0's yield table
-and editing a line, not by editing a module.
+and editing a line, not by editing a module. Nested under crawl/ (rather than
+directly in data/<slug>/) so everything one crawl round consumes for a world
+is visibly one bundle, not loose files sitting next to whatever else a world's
+folder later grows.
 """
 
 from pathlib import Path
@@ -11,16 +14,16 @@ DATA_DIR = Path(__file__).resolve().parents[2] / "data"  # -> apps/backend/data
 
 
 def load_seed_queries(slug: str) -> list[str]:
-    lines = (l.strip() for l in (DATA_DIR / slug / "seed_queries.txt").read_text().splitlines())
+    lines = (l.strip() for l in (DATA_DIR / slug / "crawl" / "seed_queries.txt").read_text().splitlines())
     return [l for l in lines if l and not l.startswith("#")]
 
 
 def load_query_prompt(slug: str) -> str:
-    """Falls back to data/_default/ so the eight product worlds keep the original
-    prompt without needing a file each."""
-    path = DATA_DIR / slug / "query_prompt.txt"
+    """Falls back to data/_default/crawl/ so the eight product worlds keep the
+    original prompt without needing a file each."""
+    path = DATA_DIR / slug / "crawl" / "query_prompt.txt"
     if not path.exists():
-        path = DATA_DIR / "_default" / "query_prompt.txt"
+        path = DATA_DIR / "_default" / "crawl" / "query_prompt.txt"
     return "\n".join(l for l in path.read_text().splitlines() if not l.startswith("#")).strip()
 
 
