@@ -125,6 +125,24 @@ class CrawlQuery(Base):
     executed_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
 
 
+class CrawlPromptLog(Base):
+    """One row per query_gen.generate() call — the exact prompt sent to the LLM.
+
+    _evidence() is cumulative over vlm_json, so re-building the prompt later
+    reflects today's data, not what the model actually saw at generation time
+    (same reasoning as WorldPost.blob_text). Immutable once written.
+    """
+
+    __tablename__ = "crawl_prompt_logs"
+
+    world_slug: Mapped[str] = mapped_column(Text, primary_key=True)
+    round_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    system_instruction: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    generated_at: Mapped[datetime.datetime] = mapped_column(default=datetime.datetime.utcnow)
+
+
 class World(Base):
     """Manually seeded, static reference set — 8 hand-written world definitions."""
 

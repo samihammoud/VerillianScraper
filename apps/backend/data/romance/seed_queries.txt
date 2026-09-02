@@ -1,4 +1,4 @@
-# Round 0 seed queries for the romance world.
+# Round 1 seed queries for the romance world.
 # One query per line. Blank lines and # comments ignored.
 # What a person types into TikTok search: short, lowercase, no hashtags.
 #

@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.config.settings import settings
-from src.db.models import CrawlQuery, Post, World
+from src.db.models import CrawlPromptLog, CrawlQuery, Post, World
 from src.services.crawl_config import load_query_prompt
 
 logger = logging.getLogger(__name__)
@@ -121,6 +121,13 @@ def generate(db: Session, world_slug: str, round_no: int) -> list[CrawlQuery]:
     instruction = load_query_prompt(world_slug).format(
         QUERIES_PER_ROUND=QUERIES_PER_ROUND, N_EXPLOIT=N_EXPLOIT, N_EXPLORE=N_EXPLORE
     )
+    db.merge(
+        CrawlPromptLog(
+            world_slug=world_slug, round_no=round_no,
+            system_instruction=instruction, prompt=prompt, model=MODEL,
+        )
+    )
+    db.commit()
 
     try:
         response = _client.models.generate_content(
