@@ -32,7 +32,7 @@ extract_terms in terms.py is the mirror of flatten_for_blob — same input,
 different projection. When SCHEMA_VERSION changes here, check there too.
 
 RESPONSE_SCHEMA lives under data/<world>/crawl/vlm_schema.json, alongside that
-world's query_prompt.txt/seed_queries.txt — it's the one part of this contract
+world's query_prompt.txt — it's the one part of this contract
 most likely to get hand-edited field-by-field (a new enum value, a tweaked
 description), and every string in it is prompt text Gemini reads, not
 documentation. describe_posts() stays world-blind — this is not a per-post

@@ -20,11 +20,9 @@ make ui        # cd apps/ui && npm run dev — 3D topology viewer (Vite + React 
 ```bash
 make reset-data                        # truncate accounts, posts, topology.world_posts (NOT topology.worlds)
 make reseed-worlds                     # re-seed topology.worlds from scratch (deliberate — world UUIDs churn); follow with `make route`
-make ingest HANDLES=h1,h2 COUNT=100    # stage 1 — video list + cover bytes only, paginated
-make enrich                            # stage 2 — backfill comments + VLM cover descriptions for whatever still lacks them
+make enrich                            # stage 2 — backfill comments for whatever still lacks them (VLM descriptions run inside `make crawl` instead)
 make route                             # stage 3 — batch-embed + route every post in the Account Store to a world
 make analyze HANDLE=handle             # stage 4 — peak detection + embedding clustering + cue labeling for one account, dumps a CSV to out/
-make smoke-test                        # run_smoke_test.py — ingest a fixed 4-account roster, route, dump a CSV to out/
 ```
 
 Backend one-time setup:
@@ -63,7 +61,7 @@ A scraper that crawls TikTok accounts, classifies their posts into pre-defined s
 
 **Ingest is split into two independently-runnable, independently-retryable stages**, not one coupled scrape (see `ingest.py`'s module docstring for the incident that motivated the split — a mid-scrape VLM crash used to lose an entire account's already-paid-for video-list call):
 - **Stage 1 — `ingest_account`**: video list (paginated) + cover-image bytes only. Cover bytes are downloaded synchronously here because the *signed URL* expires, not the underlying frame.
-- **Stage 2 — `enrich.py`**: backfills `comments` and `visual_description` on whatever posts still lack them, via two independent claim-query + `ThreadPoolExecutor` passes (different quotas/failure domains: RapidAPI vs. Gemini). No queue table — "needs enrichment" is a derivable fact from the row itself (`comments IS NULL`, partial-indexed), and a Postgres advisory lock keeps overlapping runs from double-spending quota.
+- **Stage 2 — `enrich.py`**: backfills `comments` on whatever posts still lack them, via a claim-query + `ThreadPoolExecutor` pass against RapidAPI. `visual_description` no longer gets backfilled here — it's populated inside the crawl loop (`crawl.run_round` calls `vision.describe_posts` per round, since query generation needs that round's descriptions). No queue table — "needs enrichment" is a derivable fact from the row itself (`comments IS NULL`, partial-indexed), and a Postgres advisory lock keeps overlapping runs from double-spending quota.
 
 **Routing is per-post, not per-account**, and is early-fusion, not multi-vector. `blob.py` assembles one token-budgeted text blob per post — visual description (from the VLM, budgeted highest) + caption + top filtered comments — embedded once (`text-embedding-3-small`) and compared via cosine similarity against all 8 world `reference_embedding`s; highest similarity wins, margin to the runner-up is stored for a future abstain threshold. Still no video-frame embedding — the visual signal is a VLM *text description* of the cover frame, folded into the same text blob, not a separate visual vector. `run_routing.py` batches this (keyset-paginated, one `embed_batch` + one matmul per page) for bulk use; `routing.route_post`/`persist_routing` are the single-post path used by the smoke test.
 
@@ -90,12 +88,24 @@ Dedup/content-hash logic beyond the existing external-id uniqueness check, front
 
 Four pipeline stages are built and functional, each runnable independently via `make`:
 
-- **`make crawl`** (`crawl.py`) — cycles pending `crawl_queries` for a world: search API → candidate handles → ingest posts+videos per account (Account Store) → VLM video-description pass → mark queries done → generate next round's queries. Queries are seeded via `make seed-crawl` (requires `make reseed-worlds`/`seed_worlds.py` to have run first — `crawl_queries.world_slug` is a plain string, not an FK, so the ledger survives a worlds reseed).
+- **`make crawl`** (`crawl.py`) — cycles pending `crawl_queries` for a world: search API → candidate handles → ingest posts+videos per account (Account Store) → VLM video-description pass → mark queries done → generate next round's queries. Round 0 queries for a new world are inserted into `crawl_queries` by hand, not via a script — `crawl_queries.world_slug` is a plain string, not an FK, so the ledger survives a worlds reseed.
 - **`make enrich`** (`enrich.py`) — backfills comments per post from RapidAPI, persists to `posts.comments` (JSONB).
 - **`make route`** (`routing.py`) — embeds posts (OpenAI `text-embedding-3-small`) using the VLM's video description only — caption/comments were dropped from the routing blob to keep the vector purely topical (see `blob.py`) — cosine-matches against each world's `reference_embedding`, upserts into `topology.world_posts`.
 - **`make analyze HANDLE=...`** (`run_analyze.py`) — peak detection (`peaks.py`) + embedding clustering (`clustering.py`) + cluster labeling, dumps a CSV per account.
 
 The VLM step is a real batch flow, not synchronous per-video calls: `vision.py` uploads each claimed video via the Files API, waits for it to reach `ACTIVE`, submits every request in one `batches.create` call, and polls `job.done` until Gemini finishes the whole job before collecting results.
+
+**`UPLOAD_LEDGER` (`vision.py`) tracks in-flight Gemini file uploads so cleanup never depends on `files.list`.** The Files API has a 20GB live-storage quota shared across everything uploaded and not yet deleted; on success, each file is deleted by the exact name already in hand (`request.metadata["file_name"]` in `_collect_and_cleanup`, or the `File` object itself in `_await_active`'s failure branches) — no listing involved on the happy path. The gap was always what happens when a run dies *before* reaching one of those points, since nothing durable recorded which files had been uploaded. `UPLOAD_LEDGER` (`out/gemini_uploads.txt`) closes that gap: `_submit_upload` appends each uploaded file's name to it (lock-guarded — `VIDEO_WORKERS` threads write concurrently), and `describe_posts()` calls `_recover_orphaned_uploads()` at the start of every pass, which deletes every name still listed (leftover from a prior crash) and clears the file. On a clean pass the ledger is unlinked at the end, since every entry it holds was deleted on that same pass.
+
+Fail states this addresses, and what happens in each:
+- **Process killed/crashed mid-upload** (before a file reaches `ACTIVE` or gets batched) — file has no record anywhere except the ledger. Next `describe_posts()` call reads the ledger and deletes it by name.
+- **Process killed/crashed while polling for `ACTIVE`, or during `batches.create`/`job.done` polling** — same: only the ledger knows the file exists at that point.
+- **Process killed/crashed after the batch finishes but before `_collect_and_cleanup` runs for every pair** — any file not yet individually deleted is still in the ledger; recovered next pass.
+- **A file fails upload outright** (`_submit_upload` catches and returns `None`) — never appended to the ledger in the first place, nothing to recover.
+- **A file reaches a terminal non-`ACTIVE` state, or times out stuck in `PROCESSING`** — already deleted synchronously inside `_await_active`; ledger entry becomes stale but harmless (unlinked at the end of a clean pass regardless).
+- **`files.list` itself is down** (a real Google-side incident, confirmed 2026-09-03: persistent 500 "Failed to convert server response to JSON" at every page size, reproduced via raw REST bypassing the SDK) — irrelevant now; recovery never calls `list`, only targeted `delete` by name.
+
+When to reach for this vs. an ad hoc `files.list`-based purge: always prefer the ledger path (it's automatic, runs every pass) — a manual list-and-purge is only a fallback for orphans that predate the ledger's existence (nothing recorded their names) or that were uploaded by some other process/script entirely outside `vision.py`.
 
 Cover images are no longer fetched at all — ingest downloads video bytes only (`video_storage.py`); `cover_key`/`cover_status` on `Post` are legacy, unpopulated columns from when a cover-image VLM pass existed. Cluster labeling in `run_analyze.py`/`clustering.py` reads `Post.vlm_json` directly (`product_names`/`topics` helpers in `clustering.py`) rather than parsing a formatted string — this replaced an earlier mismatch where labeling still expected the old 5-line cover-image prompt format that `vision.py` no longer produces.
 

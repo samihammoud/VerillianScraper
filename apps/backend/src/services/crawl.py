@@ -12,12 +12,16 @@ mid-round and rerun: it continues.
 """
 
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+from uuid import UUID
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from src.db.models import Account, CrawlQuery
+from src.db.session import SessionLocal
 from src.services import query_gen
 from src.services.ingest import ingest_account
 from src.services.mapper import page_cursor
@@ -66,25 +70,51 @@ def _known_handles(db: Session, handles: list[str]) -> set[str]:
     )
 
 
+def _ingest_one(handle: str, world_slug: str, query_id: UUID) -> float:
+    """Ingests one handle on its own Session — a Session isn't thread-safe to
+    share, so each worker opens, uses, and closes its own, same pattern as
+    enrich.py's per-thread sessions. Failures are logged and swallowed here
+    (not re-raised) so one bad handle can't take down the others in the pool.
+    Returns elapsed seconds so run_query can print a live per-account rate —
+    the pool being "20 at once" is invisible from the log otherwise, since a
+    fast/no-op handle (nothing new to download) and a slow one look identical
+    without a completion timestamp attached."""
+    start = time.monotonic()
+    db = SessionLocal()
+    try:
+        ingest_account(db, handle, POSTS_PER_ACCOUNT, discovered_by_world=world_slug, discovered_by_query_id=query_id)
+    except Exception as exc:
+        logger.warning("ingest failed for %s: %s", handle, exc)
+    finally:
+        db.close()
+    return time.monotonic() - start
+
+
 def run_query(db: Session, query: CrawlQuery) -> tuple[int, int]:
     """Search one query, ingest every handle it found, mark it done.
 
     Committed per query so a crash costs one query, not the whole round.
     Returns (handles_found, new_handles) — written even when both are zero,
     because a zero row is the strongest signal the generator gets.
+
+    Ingest fans out across ACCOUNTS_PER_QUERY handles at once — each is an
+    independent account with its own Session (see _ingest_one), so there's no
+    shared mutable state between them beyond Postgres itself, which already
+    handles concurrent inserts to different rows via on_conflict_do_nothing.
     """
     handles = search_handles(query.query_text)
     known = _known_handles(db, handles)  # sampled before ingest, which would make them all known
     new = [h for h in handles if h not in known]
 
-    for handle in handles[:ACCOUNTS_PER_QUERY]:
-        try:
-            ingest_account(
-                db, handle, POSTS_PER_ACCOUNT,
-                discovered_by_world=query.world_slug, discovered_by_query_id=query.id,
-            )
-        except Exception as exc:
-            logger.warning("ingest failed for %s: %s", handle, exc)
+    batch = handles[:ACCOUNTS_PER_QUERY]
+    round_start = time.monotonic()
+    with ThreadPoolExecutor(max_workers=ACCOUNTS_PER_QUERY) as pool:
+        futures = {pool.submit(_ingest_one, h, query.world_slug, query.id): h for h in batch}
+        for i, future in enumerate(as_completed(futures), start=1):
+            handle = futures[future]
+            elapsed = future.result()
+            print(f"  [{i}/{len(batch)}] {handle} done in {elapsed:.1f}s "
+                  f"(query elapsed {time.monotonic() - round_start:.1f}s)")
 
     db.execute(
         update(CrawlQuery)
@@ -110,7 +140,7 @@ def run_round(db: Session, world_slug: str) -> bool:
     ).scalars().all()
 
     if not pending:
-        print(f"no pending queries for {world_slug} — run seed_crawl first")
+        print(f"no pending queries for {world_slug} — insert round-0 rows into crawl_queries first")
         return False
 
     round_no = pending[0].round_no

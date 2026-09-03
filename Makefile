@@ -1,4 +1,4 @@
-.PHONY: install build test lint clean reset-data reseed-worlds seed-world ingest enrich route seed-crawl crawl smoke-test analyze overview ui serve dev
+.PHONY: install build test lint clean reset-data reseed-worlds seed-world enrich route crawl analyze overview ui serve dev
 
 BACKEND := apps/backend
 PY := $(BACKEND)/.venv/bin/python
@@ -42,12 +42,9 @@ reseed-worlds:
 seed-world:
 	cd $(BACKEND) && $(PY) -m src.scripts.seed_worlds
 
-# Bulk pipeline, independently runnable/re-runnable stages:
-# stage 1 — video list + cover bytes only, paginated
-ingest:
-	@test -n "$(HANDLES)" || { echo "usage: make ingest HANDLES=h1,h2 [COUNT=40] [WORLD=slug]"; exit 1; }
-	cd $(BACKEND) && $(PY) -m src.scripts.run_ingest "$(HANDLES)" $(COUNT) "$(if $(filter command line,$(origin WORLD)),$(WORLD),)"
-
+# Bulk pipeline, independently runnable/re-runnable stages. Stage 1 (video
+# list + bytes) runs only via `make crawl` now — accounts are discovered
+# through search, not passed in by handle.
 # stage 2 — comments + VLM descriptions, backfilled over whatever still lacks them
 enrich:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_enrich
@@ -55,9 +52,6 @@ enrich:
 # stage 3 — batch-embed + route to worlds
 route:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_routing
-
-smoke-test:
-	cd $(BACKEND) && $(PY) -m src.scripts.run_smoke_test
 
 # stage 4 — peak analysis for one account: pure compute over Postgres, no external API
 analyze:
@@ -68,9 +62,9 @@ overview:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_overview $(WORLD)
 
 # Crawl loop: search API -> candidate accounts -> ingest -> VLM -> next round's queries.
-seed-crawl:
-	cd $(BACKEND) && $(PY) -m src.scripts.seed_crawl $(WORLD)
-
+# Round 0 queries aren't seeded by a script — insert them into crawl_queries
+# by hand (world_slug, round_no=0, query_text, intent='seed', status='pending')
+# before the first run for a new world.
 crawl:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_crawl $(WORLD) $(ROUNDS)
 

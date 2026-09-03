@@ -80,7 +80,7 @@ class Post(Base):
     # unlike one to topology.worlds, since crawl_queries is never truncated/
     # reseeded. Lets a query's yield (handles_found) be connected to its
     # actual downstream outcome (content quality/engagement), not just volume.
-    # NULL for posts ingested outside the crawl loop (e.g. ad-hoc `make ingest`).
+    # NULL for posts ingested outside the crawl loop.
     discovered_by_query_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("crawl_queries.id"), nullable=True
     )

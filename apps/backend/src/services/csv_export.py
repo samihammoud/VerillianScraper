@@ -1,6 +1,6 @@
-"""Shared CSV-writing boilerplate for the batch scripts (run_smoke_test.py,
-run_analyze.py): timestamped filename under out/, DictWriter with a header.
-Sorting stays with each caller — the sort key differs per script."""
+"""Shared CSV-writing boilerplate for the batch scripts (run_analyze.py):
+timestamped filename under out/, DictWriter with a header. Sorting stays
+with each caller — the sort key differs per script."""
 
 import csv
 from datetime import datetime, timezone
