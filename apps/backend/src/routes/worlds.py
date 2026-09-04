@@ -157,7 +157,7 @@ def term_posts(slug: str, facet: str, canon_term: str, limit: int = Query(20, ge
         world = _get_world(db, slug)
 
         rows = db.execute(
-            select(Post, Account.handle)
+            select(Post, Account.handle, PostTerm.raw_term)
             .join(PostTerm, PostTerm.post_id == Post.id)
             .join(Account, Account.id == Post.account_id)
             .where(PostTerm.world_id == world.id, PostTerm.facet == facet, PostTerm.canon_term == canon_term)
@@ -165,9 +165,11 @@ def term_posts(slug: str, facet: str, canon_term: str, limit: int = Query(20, ge
 
         # A post can carry two raw_terms that clustered into the same canon_term
         # (two distinctly-phrased mentions in one video), so dedupe by post id
-        # rather than trusting the join to be 1:1.
-        by_post_id = {post.id: (post, handle) for post, handle in rows}
-        ordered = sorted(by_post_id.values(), key=lambda ph: -(ph[0].views or 0))[:limit]
+        # rather than trusting the join to be 1:1 — keeps whichever raw_term the
+        # join happens to return first, which is fine since for the single-value
+        # embedding-cluster facets (hook/premise/punchline) there's only ever one.
+        by_post_id = {post.id: (post, handle, raw_term) for post, handle, raw_term in rows}
+        ordered = sorted(by_post_id.values(), key=lambda phr: -(phr[0].views or 0))[:limit]
 
         return [
             {
@@ -179,8 +181,14 @@ def term_posts(slug: str, facet: str, canon_term: str, limit: int = Query(20, ge
                 "posted_at": post.posted_at.isoformat() if post.posted_at else None,
                 "format": (post.vlm_json or {}).get("format"),
                 "summary": (post.vlm_json or {}).get("summary"),
+                # The actual field that put this post under this canon_term — for a
+                # short-phrase facet (product/topic/hook/...) this is what to check
+                # the term ranking against, not caption/summary (unrelated fields
+                # that made "why is this video under this hook" look like a bug when
+                # it wasn't — the raw_term just was never shown).
+                "matched_term": raw_term,
             }
-            for post, handle in ordered
+            for post, handle, raw_term in ordered
         ]
     finally:
         db.close()

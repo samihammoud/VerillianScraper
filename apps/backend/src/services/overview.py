@@ -12,17 +12,48 @@ intentionally runs without it.
 from collections import defaultdict
 
 import numpy as np
+from sklearn.cluster import HDBSCAN
+from sklearn.decomposition import PCA
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 
 from src.db.models import Post, PostTerm, TermEmbedding, World, WorldPost, WorldTermStat
 from src.services.clustering import cluster_by_threshold, cosine_similarity_matrix
 from src.services.embeddings import embed_batch
+from src.services.linalg import l2_normalize
 from src.services.terms import CLUSTERED_FACETS, RAW_FACETS, extract_scrape_terms, extract_terms, normalize
 
 CLUSTER_THRESHOLD = 0.86  # tuned once in phase 2 by eyeballing merges against `variants`
 MIN_POSTS = 5
 MIN_ACCOUNTS = 3
+
+# Phase 9 layer 1 — premise/situation clustering (see CLAUDEphase9romanceoverview.md).
+# Sentences, not noun phrases, so CLUSTER_THRESHOLD (tuned for short terms) does not
+# apply here — this starts as a rough guess and needs eyeballing per the doc's own
+# verification step (read 20 premises from a cluster, confirm same situation) before
+# it's trustworthy. Lower than CLUSTER_THRESHOLD on purpose: full sentences about the
+# same situation paraphrase more than noun phrases do, so a 0.86 bar would fragment
+# into near-singletons.
+PREMISE_DEDUPE_THRESHOLD = 0.97  # reposted/re-voiced clips, per the doc — collapse before counting
+PREMISE_MIN_POSTS = 8
+PREMISE_MIN_ACCOUNTS = 5  # raised vs. MIN_ACCOUNTS: farmed romance content needs a harder floor
+
+# Swept twice in src/services/phase9/tune_premise_threshold.py against the real romance corpus
+# (2026-09-03). cluster_by_threshold (single-link/connected-components) was tried first and
+# ruled out — every threshold from 0.74-0.90 was either a couple of giant blobs (bridge posts
+# chain-merging distinct situations into one 100-200 post cluster) or near-total singleton
+# fragmentation, with no usable middle ground. HDBSCAN directly on raw 1536-dim embeddings
+# degenerated to one blob too (distance concentration in high dimensions) — PCA reduction fixes
+# that. First sweep (before _premise_text excluded relationship.stage=="not_applicable" posts)
+# picked PCA-50/min_cluster_size=8; re-swept after that fix changed the candidate pool's density
+# landscape enough to need reselecting — PCA-100/min_cluster_size=8 was the best of the second
+# sweep (10 clusters, sizes [458, 262, 56, 32, 31, ...], no single dominant blob). Both sweeps
+# plateaued around 10-15 clusters across every config tried, well under the doc's 30-75 target
+# for this corpus size — treated as a property of the data (premise sentences form a fairly
+# continuous space of situations, not many tight islands) rather than a tuning miss at this
+# point; see the sweep script's docstring for the full comparison.
+PREMISE_PCA_DIMS = 100
+PREMISE_MIN_CLUSTER_SIZE = 8
 MEDIAN_LIFT_TOLERANCE = 1.0  # log-space; see rollup()'s assert for what a violation means
 
 
@@ -45,7 +76,14 @@ def _extract_and_store(db, world: World) -> list[tuple]:
         .where(WorldPost.world_id == world.id)
     ).all()
 
-    db.execute(delete(PostTerm).where(PostTerm.world_id == world.id))
+    # Scoped to these post_ids, not to world_id: PostTerm's PK is (post_id, facet,
+    # raw_term) with no world_id in it, and routing is re-runnable — a post can
+    # switch worlds between runs (WorldPost upserts by post_id). Deleting only
+    # `WHERE world_id = this world` leaves a migrated post's old-world rows in
+    # place, colliding with the fresh insert on that PK the moment it lands here.
+    post_ids = [post_id for post_id, *_ in posts]
+    if post_ids:
+        db.execute(delete(PostTerm).where(PostTerm.post_id.in_(post_ids)))
 
     rows = []
     for post_id, account_id, views, vlm_json, music_original, music_author in posts:
@@ -232,6 +270,211 @@ def world_median(db, world: World) -> float:
     return float(np.median(eligible)) if eligible else 0.0
 
 
+def _premise_text(vlm_json: dict | None) -> str | None:
+    """Embed `premise` alone when present; fall back to summary+topics only
+    for posts described under the pre-relationship-layer schema (no
+    `relationship` key at all — see CLAUDE.md's overview section on
+    ACTIVE_SCHEMA_WORLD), never for a post the VLM explicitly judged isn't
+    about a relationship (`relationship.stage == "not_applicable"`, a real
+    signal, not a missing one). Without this distinction, non-relationship
+    content routed into the romance world (Rust gameplay, disaster
+    animations — real incident, 2026-09-03) clustered on summary/topic
+    similarity and surfaced in the Situations panel as if it were a romance
+    finding. Never the transcript: verbatim dialogue drags the vector toward
+    wording, not situation, and two videos about the same premise with
+    different scripts must land in the same cluster."""
+    if not vlm_json:
+        return None
+    if premise := vlm_json.get("premise"):
+        return premise.strip()
+    relationship = vlm_json.get("relationship")
+    if relationship is not None and relationship.get("stage") == "not_applicable":
+        return None
+    summary = vlm_json.get("summary") or ""
+    topics = " ".join(vlm_json.get("topics") or [])
+    combined = f"{summary} {topics}".strip()
+    return combined or None
+
+
+def _dedupe_map(posts: list[dict]) -> dict:
+    """post_id -> representative post_id. Reposted/re-voiced clips are the
+    single largest source of fake support in this corpus (per the phase 9
+    doc) — collapse near-identical transcripts before anything gets counted.
+    Posts with no transcript ("silent" per audio.kind, or pre-dialogue
+    schema) can't be deduped this way and are left as singleton groups."""
+    with_transcript = [p for p in posts if p.get("transcript")]
+    mapping = {p["post_id"]: p["post_id"] for p in posts}
+    if len(with_transcript) < 2:
+        return mapping
+
+    vectors = np.array(embed_batch([p["transcript"] for p in with_transcript]))
+    sim = cosine_similarity_matrix(vectors)
+    cluster_ids = cluster_by_threshold(sim, threshold=PREMISE_DEDUPE_THRESHOLD)
+
+    rep_by_cluster: dict[int, str] = {}
+    for post, cid in zip(with_transcript, cluster_ids):
+        rep = rep_by_cluster.setdefault(cid, post["post_id"])
+        mapping[post["post_id"]] = rep
+    return mapping
+
+
+def _hook_text(vlm_json: dict | None) -> str | None:
+    if not vlm_json:
+        return None
+    hook = vlm_json.get("hook")
+    return hook.strip() if hook else None
+
+
+def _punchline_text(vlm_json: dict | None) -> str | None:
+    if not vlm_json:
+        return None
+    punchline = vlm_json.get("punchline")
+    return punchline.strip() if punchline else None
+
+
+def _text_field_clusters(db, world: World, world_median: float, facet: str, text_fn) -> tuple[list[dict], list[dict]]:
+    """Generic embed+cluster+rank over one free-text vlm_json field — shared
+    by premise (layer 1), hook, and punchline (layer 3) clustering, since all
+    three are the same pipeline over a different field: pull candidate posts,
+    dedupe reposts, PCA+HDBSCAN, label by medoid, rank by lift. Returns
+    (world_term_stats rows, post_terms rows) for the given facet — same
+    shape the rest of the pipeline writes, per the doc's own note that this
+    needs no new schema through step 3. canon_term is the medoid sentence,
+    not a normalized phrase."""
+    rows = db.execute(
+        select(Post.id, Post.account_id, Post.views, Post.vlm_json)
+        .join(WorldPost, WorldPost.post_id == Post.id)
+        .where(WorldPost.world_id == world.id)
+    ).all()
+
+    posts = []
+    for post_id, account_id, views, vlm_json in rows:
+        text = text_fn(vlm_json)
+        if not text or not views:
+            continue
+        posts.append(
+            {
+                "post_id": post_id,
+                "account_id": account_id,
+                "text": text,
+                "transcript": (vlm_json or {}).get("transcript"),
+                "metric": float(np.log1p(views)),
+            }
+        )
+    if len(posts) < 2:
+        return [], []
+
+    dedupe_map = _dedupe_map(posts)
+    by_post_id = {p["post_id"]: p for p in posts}
+    rep_ids = sorted({rid for rid in dedupe_map.values()}, key=str)
+    reps = [by_post_id[rid] for rid in rep_ids]
+    rep_index = {rid: i for i, rid in enumerate(rep_ids)}
+
+    vectors = np.array(embed_batch([p["text"] for p in reps]))
+    normalized = l2_normalize(vectors)
+    sim = cosine_similarity_matrix(vectors)  # kept at full dimensionality — medoid/variant
+    # selection is a small per-cluster lookup, not the clustering step itself, so it doesn't
+    # inherit the high-dimensional density problem PCA below is working around.
+    reduced = PCA(n_components=min(PREMISE_PCA_DIMS, len(reps) - 1), random_state=0).fit_transform(normalized)
+    cluster_ids = HDBSCAN(min_cluster_size=PREMISE_MIN_CLUSTER_SIZE, metric="euclidean").fit_predict(reduced)
+    cluster_by_rep_id = dict(zip(rep_ids, cluster_ids))
+
+    members_by_cluster: dict[int, list[dict]] = defaultdict(list)
+    for rep, cid in zip(reps, cluster_ids):
+        if cid == -1:  # HDBSCAN noise label — not a cluster, leave unclustered rather than force-merge
+            continue
+        members_by_cluster[cid].append(rep)
+
+    term_stats = []
+    canon_by_cluster: dict[int, str] = {}
+    for cid, members in members_by_cluster.items():
+        account_ids = {m["account_id"] for m in members}
+        if len(members) < PREMISE_MIN_POSTS or len(account_ids) < PREMISE_MIN_ACCOUNTS:
+            continue
+
+        idxs = [rep_index[m["post_id"]] for m in members]
+        median_m = float(np.median([m["metric"] for m in members]))
+        lift = median_m - world_median
+
+        sub_sim = sim[np.ix_(idxs, idxs)]
+        medoid_local = int(np.argmax(sub_sim.sum(axis=1)))
+        medoid_text = members[medoid_local]["text"]
+        order = np.argsort(-sub_sim[medoid_local])
+        variants = []
+        for j in order:
+            candidate = members[j]["text"]
+            if candidate != medoid_text and candidate not in variants:
+                variants.append(candidate)
+            if len(variants) >= 5:
+                break
+
+        canon_by_cluster[cid] = medoid_text
+        term_stats.append(
+            {
+                "world_id": world.id,
+                "facet": facet,
+                "canon_term": medoid_text,
+                "n_posts": len(members),
+                "n_accounts": len(account_ids),
+                "n_hero": 0,
+                "median_m": median_m,
+                "lift": lift,
+                "view_ratio": float(np.exp(lift)),
+                "account_lift": 0.0,  # not computed for embedding-cluster facets — see doc's layer 1 vs. account-floor note
+                "account_view_ratio": 1.0,
+                "variants": variants,
+            }
+        )
+
+    # Tag every original post (including deduped-out reposts) for drill-down,
+    # not just the representatives counted above — a viewer browsing a
+    # cluster should see every matching video, only the *count* excludes reposts.
+    post_term_rows = []
+    for p in posts:
+        rep_id = dedupe_map[p["post_id"]]
+        cid = cluster_by_rep_id.get(rep_id)
+        if cid is None or cid not in canon_by_cluster:
+            continue
+        post_term_rows.append(
+            {
+                "post_id": p["post_id"],
+                "world_id": world.id,
+                "account_id": p["account_id"],
+                "facet": facet,
+                "raw_term": p["text"][:2000],  # PostTerm.raw_term is part of the PK — guard pathological length
+                "norm_term": canon_by_cluster[cid],
+                "canon_term": canon_by_cluster[cid],
+                "prominence": None,
+                "metric": p["metric"],
+                "low_conf": False,
+            }
+        )
+    return term_stats, post_term_rows
+
+
+def _premise_clusters(db, world: World, world_median: float) -> tuple[list[dict], list[dict]]:
+    """Phase 9 layer 1 — situation space. See _text_field_clusters."""
+    return _text_field_clusters(db, world, world_median, "premise_cluster", _premise_text)
+
+
+def _hook_clusters(db, world: World, world_median: float) -> tuple[list[dict], list[dict]]:
+    """Phase 9 layer 3 — hook space. Embeds `hook` verbatim (the doc is explicit
+    that hook phrasings transfer across situations, so this is deliberately a
+    separate embedding space from premise, not a sub-grouping within it):
+    a reusable library of opening moves, ranked by lift."""
+    return _text_field_clusters(db, world, world_median, "hook_cluster", _hook_text)
+
+
+def _punchline_clusters(db, world: World, world_median: float) -> tuple[list[dict], list[dict]]:
+    """Phase 9 layer 3 — punchline space. The doc wants these hand-labeled by
+    rhetorical move (reframe, deflate, deadpan agreement...) rather than
+    medoid-text — not done here (no automated way to classify a rhetorical
+    move), so canon_term is still the medoid punchline sentence, same
+    mechanism as premise/hook. Good enough to rank and drill into; the
+    rhetorical-move taxonomy is a manual follow-up on top of this."""
+    return _text_field_clusters(db, world, world_median, "punchline_cluster", _punchline_text)
+
+
 def rollup(db, world_slug: str) -> list[dict]:
     """The one entry point. Returns the stats rows it wrote, for callers
     (run_overview.py) that want to print a summary without a second query."""
@@ -243,6 +486,18 @@ def rollup(db, world_slug: str) -> list[dict]:
     median = world_median(db, world)
     by_account = account_medians(db, world)
     stats = _aggregate(db, world, median, by_account)
+
+    for label, cluster_fn in [
+        ("premise_cluster", _premise_clusters),
+        ("hook_cluster", _hook_clusters),
+        ("punchline_cluster", _punchline_clusters),
+    ]:
+        cluster_stats, cluster_post_terms = cluster_fn(db, world, median)
+        if cluster_post_terms:
+            db.execute(insert(PostTerm).values(cluster_post_terms))
+            db.commit()
+        print(f"  {label}: {len(cluster_post_terms)} posts, {len(cluster_stats)} clusters above the support floor")
+        stats = stats + cluster_stats
 
     if stats:
         median_lift = float(np.median([s["lift"] for s in stats]))

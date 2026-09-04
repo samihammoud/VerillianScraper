@@ -240,3 +240,27 @@ class TermEmbedding(Base):
     facet: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(default=datetime.datetime.utcnow)
+
+
+class ClusterProfile(Base):
+    """Phase 9 step 5 (CLAUDEphase9romanceoverview.md) — the per-cluster
+    cross-examination table. Cache table like WorldTermStat: deleted and
+    reinserted wholesale per (world, facet) every time it's recomputed, keyed
+    on the same canon_term the cluster it describes already uses (so a
+    premise cluster's profile row and its world_term_stats row share a key)."""
+
+    __tablename__ = "cluster_profiles"
+    __table_args__ = {"schema": "topology"}
+
+    world_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("topology.worlds.id"), primary_key=True)
+    facet: Mapped[str] = mapped_column(Text, primary_key=True)
+    canon_term: Mapped[str] = mapped_column(Text, primary_key=True)
+    n_posts: Mapped[int] = mapped_column(Integer, nullable=False)
+    median_duration_sec: Mapped[float | None] = mapped_column(Float, nullable=True)
+    median_dialogue_turns: Mapped[float | None] = mapped_column(Float, nullable=True)
+    enum_distribution: Mapped[dict] = mapped_column(JSONB(none_as_null=True), nullable=False, default=dict)
+    enum_view_ratio: Mapped[dict] = mapped_column(JSONB(none_as_null=True), nullable=False, default=dict)
+    modal_register: Mapped[str | None] = mapped_column(Text, nullable=True)
+    highest_lift_register: Mapped[str | None] = mapped_column(Text, nullable=True)
+    register_mismatch: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
+    computed_at: Mapped[datetime.datetime] = mapped_column(default=datetime.datetime.utcnow)

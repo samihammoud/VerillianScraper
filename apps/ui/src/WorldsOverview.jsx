@@ -261,6 +261,24 @@ function DrilldownGrid({ slug, selected, onClose }) {
               <div className="mono" style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
                 {(p.views || 0).toLocaleString()} views
               </div>
+              {/* matched_term is the actual field value that put this post under this
+                  canon_term (raw_term from post_terms) — shown first since caption/summary
+                  are unrelated fields that make an otherwise-correct match look wrong. */}
+              {p.matched_term && (
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--accent)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    marginTop: 2,
+                  }}
+                  title={p.matched_term}
+                >
+                  “{p.matched_term}”
+                </div>
+              )}
               <div
                 style={{
                   fontSize: 11,
@@ -285,15 +303,74 @@ function DrilldownGrid({ slug, selected, onClose }) {
   );
 }
 
+// Grouped so the terms view shows one category at a time instead of six
+// stacked rows — romanceOnly categories only exist because romance's schema
+// (data/romance/crawl/vlm_schema.json) adds a dialogue/relationship layer the
+// product worlds don't have (see CLAUDE.md's overview section).
+const CATEGORIES = [
+  {
+    key: "core",
+    label: "Products & Format",
+    panels: [
+      { facet: "product", label: "Winning Products" },
+      { facet: "format", label: "Winning Formats" },
+      { facet: "topic", label: "Winning Topics" },
+    ],
+  },
+  {
+    key: "signals",
+    label: "Relationship Signals",
+    romanceOnly: true,
+    panels: [
+      { facet: "relationship_conflict", label: "Conflict Type" },
+      { facet: "relationship_stage", label: "Relationship Stage" },
+      { facet: "characters_dynamic", label: "Character Dynamic" },
+      { facet: "pacing_energy_arc", label: "Pacing Arc" },
+    ],
+  },
+  {
+    key: "crosstabs",
+    label: "Cross-Tabs",
+    romanceOnly: true,
+    panels: [
+      { facet: "conflict_x_register", label: "Conflict x Register" },
+      { facet: "register_x_resolution", label: "Register x Resolution" },
+      { facet: "punchline_presence", label: "Punchline Presence" },
+    ],
+  },
+  {
+    key: "situations",
+    label: "Situations",
+    romanceOnly: true,
+    panels: [{ facet: "premise_cluster", label: "Situations (premise clusters)", fullWidth: true }],
+  },
+  {
+    key: "hooks",
+    label: "Hooks & Punchlines",
+    romanceOnly: true,
+    panels: [
+      { facet: "hook_cluster", label: "Hook Library", fullWidth: true },
+      { facet: "punchline_cluster", label: "Punchline Moves", fullWidth: true },
+    ],
+  },
+];
+
 export default function WorldsOverview() {
   const { data: worlds } = useJson(`${API}/worlds`);
   const [slug, setSlug] = useState(null);
   const [selected, setSelected] = useState(null);
   const [view, setView] = useState("terms");
+  const [category, setCategory] = useState("core");
 
   useEffect(() => {
     if (worlds?.length && !slug) setSlug(worlds[0].slug);
   }, [worlds, slug]);
+
+  const availableCategories = CATEGORIES.filter((c) => !c.romanceOnly || slug === "romance");
+
+  useEffect(() => {
+    if (!availableCategories.some((c) => c.key === category)) setCategory("core");
+  }, [slug]); // eslint-disable-line react-hooks/exhaustive-deps -- only world switches should reset the category
 
   const { data: coverageSource } = useJson(slug ? `${API}/worlds/${slug}/overview?facet=product&limit=1` : null);
 
@@ -332,6 +409,33 @@ export default function WorldsOverview() {
           ))}
         </select>
 
+        {view === "terms" && (
+          <>
+            <span className="mono" style={{ fontSize: 10, color: "var(--text-dim)", letterSpacing: 1, marginLeft: 8 }}>
+              VIEW
+            </span>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              style={{
+                background: "var(--panel-2)",
+                color: "var(--text)",
+                border: "1px solid var(--border)",
+                borderRadius: 3,
+                padding: "4px 8px",
+                fontFamily: "inherit",
+                fontSize: 13,
+              }}
+            >
+              {availableCategories.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+
         <div className="mono" style={{ fontSize: 10, marginLeft: "auto" }}>
           {["terms", "accounts"].map((v) => (
             <span
@@ -352,13 +456,29 @@ export default function WorldsOverview() {
 
       <CoverageStrip coverage={coverageSource?.coverage} />
 
-      {slug && view === "terms" && (
-        <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-          <TermPanel slug={slug} facet="product" label="Winning Products" onSelectTerm={setSelected} />
-          <TermPanel slug={slug} facet="format" label="Winning Formats" onSelectTerm={setSelected} />
-          <TermPanel slug={slug} facet="topic" label="Winning Topics" onSelectTerm={setSelected} />
-        </div>
-      )}
+      {slug && view === "terms" && (() => {
+        const activeCategory = availableCategories.find((c) => c.key === category) || availableCategories[0];
+        return (
+          <div style={{ display: "flex", flex: 1, minHeight: 0, flexDirection: "column" }}>
+            {activeCategory.panels[0]?.fullWidth ? (
+              activeCategory.panels.map((p, i) => (
+                <div
+                  key={p.facet}
+                  style={{ display: "flex", flex: 1, minHeight: 0, borderTop: i > 0 ? "1px solid var(--border)" : "none" }}
+                >
+                  <TermPanel slug={slug} facet={p.facet} label={p.label} onSelectTerm={setSelected} />
+                </div>
+              ))
+            ) : (
+              <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+                {activeCategory.panels.map((p) => (
+                  <TermPanel key={p.facet} slug={slug} facet={p.facet} label={p.label} onSelectTerm={setSelected} />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {slug && view === "accounts" && <AccountsPanel slug={slug} />}
 

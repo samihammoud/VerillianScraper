@@ -220,8 +220,22 @@ def _strip_nul(obj):
     return obj
 
 
-def _collect_result(request: types.InlinedRequest, item: types.InlinedResponse) -> None:
-    post_id = request.metadata["post_id"]
+def _collect_result(item: types.InlinedResponse) -> None:
+    # post_id comes from the RESPONSE's own echoed metadata, not from zipping
+    # against the request list positionally. Real incident, 2026-09-03: a
+    # video correctly identified at scrape time (caption matched the live
+    # TikTok post exactly) ended up with vlm_json describing a totally
+    # different video — the batch API's response order is not a documented,
+    # verified guarantee at production scale (thousands of long-running video
+    # requests, vs. the handful of trivial replies a quick correctness check
+    # would use), and `zip(requests, responses)` trusted it anyway. Every
+    # InlinedRequest/InlinedResponse carries its own `metadata` field
+    # specifically so a batch caller doesn't have to trust ordering — this
+    # was set on the request and never read back off the response.
+    if not item.metadata or "post_id" not in item.metadata:
+        logger.warning("video describe response missing metadata, cannot attribute to a post — dropped")
+        return
+    post_id = item.metadata["post_id"]
     if item.error or item.response is None:
         logger.warning("video describe failed for post=%s: %s", post_id, item.error)
         return
@@ -251,15 +265,19 @@ def _collect_result(request: types.InlinedRequest, item: types.InlinedResponse) 
         db.close()
 
 
-def _collect_and_cleanup(pair: tuple[types.InlinedRequest, types.InlinedResponse]) -> None:
+def _collect_and_cleanup(item: types.InlinedResponse) -> None:
     """One item's DB write + Gemini file cleanup, threaded — each is an
     independent post row and an independent file delete (a real network
     round-trip), so there's no reason to serialize hundreds/thousands of
     them one at a time the way the upload and status-poll steps already
-    aren't."""
-    request, item = pair
-    _collect_result(request, item)
-    _delete_uploaded_file(request.metadata["file_name"])
+    aren't. Takes the response alone (see _collect_result) — file_name for
+    cleanup also comes from the response's own echoed metadata, not a
+    zipped-in request."""
+    _collect_result(item)
+    if item.metadata and "file_name" in item.metadata:
+        _delete_uploaded_file(item.metadata["file_name"])
+    else:
+        logger.warning("video describe response missing metadata, cannot clean up its uploaded file")
 
 
 def _finalize_videos(candidate_ids: list[UUID]) -> None:
@@ -324,13 +342,12 @@ def describe_posts() -> int:
         print("VLM: batch done, collecting results...")
 
         responses = (job.dest.inlined_responses or []) if job.dest else []
-        pairs = list(zip(requests, responses))
         with ThreadPoolExecutor(max_workers=VIDEO_WORKERS) as pool:
             done = 0
-            for _ in pool.map(_collect_and_cleanup, pairs):
+            for _ in pool.map(_collect_and_cleanup, responses):
                 done += 1
-                if done % 50 == 0 or done == len(pairs):
-                    print(f"VLM: collected {done}/{len(pairs)}")
+                if done % 50 == 0 or done == len(responses):
+                    print(f"VLM: collected {done}/{len(responses)}")
 
     _finalize_videos(candidate_ids)
     UPLOAD_LEDGER.unlink(missing_ok=True)  # every entry from this pass is now deleted or terminal

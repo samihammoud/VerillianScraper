@@ -19,10 +19,29 @@ from dataclasses import dataclass
 #  - NORMALIZE_ONLY: normalize, but canon_term stays == norm_term — brands
 #    must stay verbatim distinct ("Pingu" and "Penguin" are not the same brand)
 #  - RAW: closed enums; canon_term == raw_term untouched, no normalize either
-CLUSTERED_FACETS = {"product", "format", "format_trait", "topic", "setting"}
+CLUSTERED_FACETS = {"product", "format", "format_trait", "topic", "setting", "characters_dynamic"}
 NORMALIZE_ONLY_FACETS = {"brand", "music_author"}
-RAW_FACETS = {"cta", "audio_kind", "audio_source"}
+RAW_FACETS = {
+    "cta", "audio_kind", "audio_source",
+    # SCHEMA v2/v3 romance/dialogue layer — closed enums, so RAW like cta/audio_kind:
+    # canon_term == raw_term, no embed/cluster cost for values that are already canonical.
+    "relationship_stage", "relationship_conflict", "relationship_register",
+    "relationship_resolution", "relationship_perspective", "characters_pairing",
+    "synthetic_presenter", "synthetic_voice",
+    "pacing_energy_arc", "pacing_humor_sincerity", "pacing_speaker_dominance", "pacing_density",
+    # Phase 9 layer 2 — cross-tab cells, e.g. "attention_neglect x funny". Still closed-enum
+    # combinations under the hood, so still RAW: canon_term == raw_term, no clustering.
+    "conflict_x_register", "register_x_resolution", "punchline_presence",
+}
 ALL_FACETS = CLUSTERED_FACETS | NORMALIZE_ONLY_FACETS | RAW_FACETS
+
+# "not_applicable"/"unclear" mean "this field doesn't apply to this video" or "the
+# VLM couldn't tell" — filler, not signal, and would otherwise dominate every one
+# of these facets since describe_posts() is world-blind and runs this schema
+# against product videos too (see vision_schema.py). "none" is excluded from this
+# set on purpose: for fields like synthetic.voice or characters.pairing, "none" is
+# a real, substantive answer ("no voice track", "no people on screen"), not filler.
+_FILLER_VALUES = {"not_applicable", "unclear"}
 
 
 @dataclass(frozen=True)
@@ -117,6 +136,55 @@ def extract_terms(vlm_json: dict | None) -> list[Term]:
     if audio_kind := (vlm_json.get("audio") or {}).get("kind"):
         terms.append(Term("audio_kind", audio_kind, low_conf=low_conf))
 
+    relationship = vlm_json.get("relationship") or {}
+    for facet, key in [
+        ("relationship_stage", "stage"),
+        ("relationship_conflict", "conflict"),
+        ("relationship_register", "register"),
+        ("relationship_resolution", "resolution"),
+        ("relationship_perspective", "perspective"),
+    ]:
+        if (value := relationship.get(key)) and value not in _FILLER_VALUES:
+            terms.append(Term(facet, value, low_conf=low_conf))
+
+    # Phase 9 layer 2 (CLAUDEphase9romanceoverview.md): rank *cells*, not columns —
+    # "attention_neglect x funny" and "attention_neglect x venting" can have wildly
+    # different lift even though "attention_neglect" alone averages them together.
+    conflict, register, resolution = relationship.get("conflict"), relationship.get("register"), relationship.get("resolution")
+    if conflict and conflict not in _FILLER_VALUES and register and register not in _FILLER_VALUES:
+        terms.append(Term("conflict_x_register", f"{conflict} x {register}", low_conf=low_conf))
+    if register and register not in _FILLER_VALUES and resolution and resolution not in _FILLER_VALUES:
+        terms.append(Term("register_x_resolution", f"{register} x {resolution}", low_conf=low_conf))
+
+    # Doc's "surface a single derived flag": does landing on a turn/joke/reversal
+    # correlate with performance at all. Recorded whenever the schema asked the
+    # question (key present, v3+) — punchline being null is a real answer, not a
+    # missing one, so both states are worth their own row, not just the positive.
+    if "punchline" in vlm_json:
+        terms.append(Term("punchline_presence", "has_punchline" if vlm_json.get("punchline") else "no_punchline", low_conf=low_conf))
+
+    characters = vlm_json.get("characters") or {}
+    if (pairing := characters.get("pairing")) and pairing not in _FILLER_VALUES:
+        terms.append(Term("characters_pairing", pairing, low_conf=low_conf))
+    if dynamic := characters.get("dynamic"):
+        terms.append(Term("characters_dynamic", dynamic, low_conf=low_conf))
+
+    synthetic = vlm_json.get("synthetic") or {}
+    if (presenter := synthetic.get("presenter")) and presenter not in _FILLER_VALUES:
+        terms.append(Term("synthetic_presenter", presenter, low_conf=low_conf))
+    if (voice := synthetic.get("voice")) and voice not in _FILLER_VALUES:
+        terms.append(Term("synthetic_voice", voice, low_conf=low_conf))
+
+    pacing = vlm_json.get("pacing") or {}
+    for facet, key in [
+        ("pacing_energy_arc", "energy_arc"),
+        ("pacing_humor_sincerity", "humor_sincerity"),
+        ("pacing_speaker_dominance", "speaker_dominance"),
+        ("pacing_density", "density"),
+    ]:
+        if (value := pacing.get(key)) and value not in _FILLER_VALUES:
+            terms.append(Term(facet, value, low_conf=low_conf))
+
     return _dedupe(terms)
 
 
@@ -154,6 +222,17 @@ def _self_check() -> None:
         "entities": {"brands": ["Neater"], "people": [], "places": [], "organizations": []},
         "cta": "shop_now",
         "audio": {"kind": "voiceover", "spoken_language": "en", "speaker_count": 1},
+        "punchline": "and that's why he's single now",
+        "relationship": {
+            "stage": "dating", "conflict": "jealousy_trust", "register": "petty",
+            "resolution": "punchline", "perspective": "woman",
+        },
+        "characters": {"count": 2, "pairing": "romantic_couple", "dynamic": "anxious partner calm partner"},
+        "synthetic": {"presenter": "real_person", "voice": "human", "signals": [], "certainty": "high"},
+        "pacing": {
+            "energy_arc": "build_to_punch", "humor_sincerity": "balanced",
+            "speaker_dominance": "balanced", "density": "conversational", "expression_beats": [],
+        },
         "confidence": "high",
     }
     terms = extract_terms(full)
@@ -172,7 +251,47 @@ def _self_check() -> None:
     assert by_facet["setting"][0].raw_term == "kitchen floor"
     assert by_facet["cta"][0].raw_term == "shop_now"
     assert by_facet["audio_kind"][0].raw_term == "voiceover"
+    assert by_facet["relationship_stage"][0].raw_term == "dating"
+    assert by_facet["relationship_conflict"][0].raw_term == "jealousy_trust"
+    assert by_facet["relationship_register"][0].raw_term == "petty"
+    assert by_facet["relationship_resolution"][0].raw_term == "punchline"
+    assert by_facet["relationship_perspective"][0].raw_term == "woman"
+    assert by_facet["conflict_x_register"][0].raw_term == "jealousy_trust x petty"
+    assert by_facet["register_x_resolution"][0].raw_term == "petty x punchline"
+    assert by_facet["punchline_presence"][0].raw_term == "has_punchline"
+    assert by_facet["characters_pairing"][0].raw_term == "romantic_couple"
+    assert by_facet["characters_dynamic"][0].raw_term == "anxious partner calm partner"
+    assert by_facet["synthetic_presenter"][0].raw_term == "real_person"
+    assert by_facet["synthetic_voice"][0].raw_term == "human"
+    assert by_facet["pacing_energy_arc"][0].raw_term == "build_to_punch"
+    assert by_facet["pacing_humor_sincerity"][0].raw_term == "balanced"
+    assert by_facet["pacing_speaker_dominance"][0].raw_term == "balanced"
+    assert by_facet["pacing_density"][0].raw_term == "conversational"
     assert all(not t.low_conf for t in terms)
+
+    # not_applicable/unclear are filler for non-relationship videos — excluded.
+    # "none" stays (synthetic.voice: none = real signal, not filler).
+    filler = extract_terms({
+        "relationship": {"stage": "not_applicable", "conflict": "not_applicable", "register": "not_applicable",
+                          "resolution": "not_applicable", "perspective": "not_applicable"},
+        "characters": {"count": 0, "pairing": "none", "dynamic": None},
+        "synthetic": {"presenter": "unclear", "voice": "none", "signals": [], "certainty": "low"},
+        "pacing": {"energy_arc": "not_applicable", "humor_sincerity": "not_applicable",
+                   "speaker_dominance": "not_applicable", "density": "sparse", "expression_beats": []},
+        "punchline": None,
+    })
+    filler_facets = {t.facet for t in filler}
+    assert "relationship_stage" not in filler_facets
+    assert "synthetic_presenter" not in filler_facets
+    assert "pacing_energy_arc" not in filler_facets
+    # cross-tab cells require BOTH sides non-filler — an all-not_applicable post forms none
+    assert "conflict_x_register" not in filler_facets
+    assert "register_x_resolution" not in filler_facets
+    assert {t.raw_term for t in filler if t.facet == "characters_pairing"} == {"none"}
+    assert {t.raw_term for t in filler if t.facet == "synthetic_voice"} == {"none"}
+    assert {t.raw_term for t in filler if t.facet == "pacing_density"} == {"sparse"}
+    # punchline key present but null is still a real answer — "no_punchline", not absent
+    assert {t.raw_term for t in filler if t.facet == "punchline_presence"} == {"no_punchline"}
 
     # empty products, null hook/transcript: no product/brand terms, no crash
     sparse = extract_terms({"products": [], "topics": ["x"], "format": None, "hook": None, "transcript": None})

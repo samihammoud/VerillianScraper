@@ -8,6 +8,15 @@
         "value": "space grotesk",
         "createdAt": "2026-08-25T20:51:12.077Z",
         "reason": "pre-existing identity: font predates this redesign, brief scoped to layout/color/dimensionality only, not typography"
+      },
+      {
+        "rule": "overused-font",
+        "value": "space grotesk",
+        "files": [
+          "apps/ui/src/index.css"
+        ],
+        "createdAt": "2026-09-03T19:27:04.513Z",
+        "reason": "prior design pass (DESIGN.md L42): kept deliberately as inherited identity voice, redesign scoped to layout/dimensionality/color not typography"
       }
     ]
   }
