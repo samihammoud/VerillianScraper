@@ -54,6 +54,19 @@ PREMISE_MIN_ACCOUNTS = 5  # raised vs. MIN_ACCOUNTS: farmed romance content need
 # point; see the sweep script's docstring for the full comparison.
 PREMISE_PCA_DIMS = 100
 PREMISE_MIN_CLUSTER_SIZE = 8
+
+# HDBSCAN sweeps whatever it can't place into the nearest component rather than
+# calling it noise, which produces a residual blob whose medoid names nothing.
+# Real case, 2026-09-04: a 154-post hook_cluster labeled "Hey real quick!" — a
+# string exactly ONE post in the world actually had — holding Hindi dialogue,
+# boxing-match announcements, "Aura" and "3". Measured mean pairwise cosine
+# 0.168 against 0.397-0.587 for every real cluster, so members are pruned
+# against the medoid before the support floor below is applied, and a blob
+# collapses under PREMISE_MIN_POSTS on its own instead of needing a second
+# reject rule. Swept on the romance corpus: 0.35 cuts that blob 154 -> 6 (dead)
+# while costing real clusters 2-6% of their members; 0.45 starts killing
+# legitimate clusters outright.
+MEMBER_COSINE_FLOOR = 0.35
 MEDIAN_LIFT_TOLERANCE = 1.0  # log-space; see rollup()'s assert for what a violation means
 
 
@@ -387,17 +400,26 @@ def _text_field_clusters(db, world: World, world_median: float, facet: str, text
 
     term_stats = []
     canon_by_cluster: dict[int, str] = {}
+    kept_by_cluster: dict[int, set] = {}
     for cid, members in members_by_cluster.items():
+        idxs = [rep_index[m["post_id"]] for m in members]
+        sub_sim = sim[np.ix_(idxs, idxs)]
+        medoid_local = int(np.argmax(sub_sim.sum(axis=1)))
+
+        # Drop members that aren't actually close to the medoid, then let the
+        # support floor below judge what's left — see MEMBER_COSINE_FLOOR. The
+        # medoid scores 1.0 against itself, so `keep` is never empty.
+        keep = [i for i in range(len(members)) if sub_sim[medoid_local, i] >= MEMBER_COSINE_FLOOR]
+        members = [members[i] for i in keep]
+        sub_sim = sub_sim[np.ix_(keep, keep)]
+        medoid_local = keep.index(medoid_local)
+
         account_ids = {m["account_id"] for m in members}
         if len(members) < PREMISE_MIN_POSTS or len(account_ids) < PREMISE_MIN_ACCOUNTS:
             continue
 
-        idxs = [rep_index[m["post_id"]] for m in members]
         median_m = float(np.median([m["metric"] for m in members]))
         lift = median_m - world_median
-
-        sub_sim = sim[np.ix_(idxs, idxs)]
-        medoid_local = int(np.argmax(sub_sim.sum(axis=1)))
         medoid_text = members[medoid_local]["text"]
         order = np.argsort(-sub_sim[medoid_local])
         variants = []
@@ -409,6 +431,7 @@ def _text_field_clusters(db, world: World, world_median: float, facet: str, text
                 break
 
         canon_by_cluster[cid] = medoid_text
+        kept_by_cluster[cid] = {m["post_id"] for m in members}
         term_stats.append(
             {
                 "world_id": world.id,
@@ -433,7 +456,7 @@ def _text_field_clusters(db, world: World, world_median: float, facet: str, text
     for p in posts:
         rep_id = dedupe_map[p["post_id"]]
         cid = cluster_by_rep_id.get(rep_id)
-        if cid is None or cid not in canon_by_cluster:
+        if cid is None or cid not in canon_by_cluster or rep_id not in kept_by_cluster[cid]:
             continue
         post_term_rows.append(
             {

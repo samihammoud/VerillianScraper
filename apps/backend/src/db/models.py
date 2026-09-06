@@ -35,6 +35,12 @@ class Post(Base):
             "visual_attempts",
             postgresql_where=text("visual_description IS NULL"),
         ),
+        # pass-A (registration) claim predicate — see vision.py
+        Index(
+            "ix_posts_unregistered",
+            "visual_attempts",
+            postgresql_where=text("gemini_file_name IS NULL AND vlm_json IS NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -71,6 +77,15 @@ class Post(Base):
     visual_model: Mapped[str | None] = mapped_column(String, nullable=True)
     visual_generated_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
     visual_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # The Gemini Files API resource name ("files/abc123") this post's GCS video
+    # is registered as — written the instant one register_files() call
+    # succeeds. This column IS the registration state: a post either has one or
+    # it doesn't, and that is always exactly true because it's a committed row
+    # rather than an in-memory list that dies with the process. It replaced the
+    # out/gemini_uploads.txt ledger for the same reason. Cleared back to NULL
+    # when a registration is found dead (Files API entries expire after 48h),
+    # which is what makes re-registration automatic rather than a manual purge.
+    gemini_file_name: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # world_slug of the crawl_query that discovered this post's account, not a
     # routing result — routing (topology.world_posts) can disagree with this.

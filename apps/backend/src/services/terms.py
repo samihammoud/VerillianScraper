@@ -32,6 +32,7 @@ RAW_FACETS = {
     # Phase 9 layer 2 — cross-tab cells, e.g. "attention_neglect x funny". Still closed-enum
     # combinations under the hood, so still RAW: canon_term == raw_term, no clustering.
     "conflict_x_register", "register_x_resolution", "punchline_presence",
+    "register_x_advice_specificity",
 }
 ALL_FACETS = CLUSTERED_FACETS | NORMALIZE_ONLY_FACETS | RAW_FACETS
 
@@ -156,6 +157,10 @@ def extract_terms(vlm_json: dict | None) -> list[Term]:
     if register and register not in _FILLER_VALUES and resolution and resolution not in _FILLER_VALUES:
         terms.append(Term("register_x_resolution", f"{register} x {resolution}", low_conf=low_conf))
 
+    specificity = (vlm_json.get("advice") or {}).get("specificity")
+    if register and register not in _FILLER_VALUES and specificity and specificity not in _FILLER_VALUES:
+        terms.append(Term("register_x_advice_specificity", f"{register} x {specificity}", low_conf=low_conf))
+
     # Doc's "surface a single derived flag": does landing on a turn/joke/reversal
     # correlate with performance at all. Recorded whenever the schema asked the
     # question (key present, v3+) — punchline being null is a real answer, not a
@@ -227,6 +232,8 @@ def _self_check() -> None:
             "stage": "dating", "conflict": "jealousy_trust", "register": "petty",
             "resolution": "punchline", "perspective": "woman",
         },
+        "advice": {"present": True, "content": "just talk to him", "topic": "confronting a partner",
+                   "source": "narrator", "specificity": "general_platitude"},
         "characters": {"count": 2, "pairing": "romantic_couple", "dynamic": "anxious partner calm partner"},
         "synthetic": {"presenter": "real_person", "voice": "human", "signals": [], "certainty": "high"},
         "pacing": {
@@ -258,6 +265,7 @@ def _self_check() -> None:
     assert by_facet["relationship_perspective"][0].raw_term == "woman"
     assert by_facet["conflict_x_register"][0].raw_term == "jealousy_trust x petty"
     assert by_facet["register_x_resolution"][0].raw_term == "petty x punchline"
+    assert by_facet["register_x_advice_specificity"][0].raw_term == "petty x general_platitude"
     assert by_facet["punchline_presence"][0].raw_term == "has_punchline"
     assert by_facet["characters_pairing"][0].raw_term == "romantic_couple"
     assert by_facet["characters_dynamic"][0].raw_term == "anxious partner calm partner"

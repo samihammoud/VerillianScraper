@@ -21,7 +21,7 @@ from src.db.session import SessionLocal
 from src.services.ingest import _fetch_video
 from src.services.mapper import map_account_and_posts
 from src.services.tiktok_client import get_user_videos
-from src.services.video_storage import video_path
+from src.services.video_storage import list_non_described_ids
 from src.services.vision import describe_posts
 
 logging.basicConfig(level=logging.INFO)
@@ -45,7 +45,7 @@ def _accounts_needing_backfill() -> list[str]:
         db.close()
 
 
-def _backfill_account(handle: str) -> int:
+def _backfill_account(handle: str, available: set) -> int:
     db = SessionLocal()
     try:
         missing = db.execute(
@@ -53,7 +53,7 @@ def _backfill_account(handle: str) -> int:
             .join(Account, Account.id == Post.account_id)
             .where(Account.handle == handle, Post.vlm_json.is_(None))
         ).all()
-        missing = [(pid, ext_id) for pid, ext_id in missing if not video_path(pid).exists()]
+        missing = [(pid, ext_id) for pid, ext_id in missing if pid not in available]
         if not missing:
             return 0
 
@@ -67,8 +67,7 @@ def _backfill_account(handle: str) -> int:
             if fresh is None:
                 logger.warning("post=%s (external_id=%s) no longer in %s's video list — skipping", post_id, external_id, handle)
                 continue
-            _fetch_video({"id": post_id, "media_urls": fresh["media_urls"]})
-            if video_path(post_id).exists():
+            if _fetch_video({"id": post_id, "media_urls": fresh["media_urls"]}):
                 n += 1
         return n
     except Exception as exc:
@@ -82,9 +81,13 @@ def backfill_videos() -> int:
     handles = _accounts_needing_backfill()
     print(f"{len(handles)} accounts have posts missing vlm_json")
 
+    # One GCS listing for the whole run, shared across workers — "already has a
+    # video" is a prefix listing now, not a per-post stat().
+    available = list_non_described_ids()
+
     total = 0
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        for handle, n in zip(handles, pool.map(_backfill_account, handles)):
+        for handle, n in zip(handles, pool.map(_backfill_account, handles, [available] * len(handles))):
             total += n
             print(f"{handle}: {n} videos re-downloaded")
 

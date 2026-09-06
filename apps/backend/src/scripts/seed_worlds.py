@@ -184,6 +184,24 @@ WORLDS = [
             "we argue about the dishes more than anything serious",
         ],
     },
+    {
+        "slug": "ai-romance-subworld",
+        "name": "AI-Generated Romance",
+        "description": (
+            "AI-generated couple/romance story series and skits — AI-rendered or AI-voiced characters "
+            "acting out relationship scenes, story arcs, and drama, not real people. Distinct from "
+            "Romance & Relationships: that world covers real people (scripted or commentary), this one "
+            "is specifically about the content being AI-generated. Not AI dating apps, companion "
+            "chatbots, or people discussing using AI to date — those are a different topic."
+        ),
+        "example_snippets": [
+            "ai couple story series episode 1",
+            "ai relationship skit gone wrong",
+            "ai girlfriend boyfriend story part 2",
+            "ai avatar couple drama",
+            "ai generated couple pov",
+        ],
+    },
 ]
 
 

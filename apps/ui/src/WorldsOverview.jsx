@@ -335,6 +335,7 @@ const CATEGORIES = [
     panels: [
       { facet: "conflict_x_register", label: "Conflict x Register" },
       { facet: "register_x_resolution", label: "Register x Resolution" },
+      { facet: "register_x_advice_specificity", label: "Register x Advice Specificity" },
       { facet: "punchline_presence", label: "Punchline Presence" },
     ],
   },

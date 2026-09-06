@@ -1,7 +1,8 @@
-.PHONY: install build test lint clean reset-data reseed-worlds seed-world enrich route crawl analyze overview ui serve dev
+.PHONY: install build test lint clean reset-data reseed-worlds seed-world enrich route crawl redescribe analyze overview overview-deep ui serve dev
 
 BACKEND := apps/backend
-PY := $(BACKEND)/.venv/bin/python
+# Relative to $(BACKEND) on purpose: every recipe using it cd's there first.
+PY := .venv/bin/python
 COUNT ?= 15
 WORLD ?= pets
 ROUNDS ?= 1
@@ -61,12 +62,33 @@ analyze:
 overview:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_overview $(WORLD)
 
+# phase 9 — the full romance overview strategy (CLAUDEphase9romanceoverview.md).
+# Layers 1-3 (premise/hook/punchline clustering) already run inside `overview`
+# itself; these are the two second passes over the post_terms it writes.
+# Runs on any world, but only the romance VLM schema has the relationship/
+# pacing enums cluster_profiles reports on — elsewhere its distributions are
+# empty. `stratify.py` is deliberately not chained here: it needs a stratum
+# argument you choose per question, e.g.
+#   $(PY) -m src.services.phase9.stratify romance premise_cluster estimated_duration_sec:lt15
+overview-deep: overview
+	cd $(BACKEND) && $(PY) -m src.services.phase9.cluster_profiles $(WORLD)
+	cd $(BACKEND) && $(PY) -m src.services.phase9.recency_quadrant $(WORLD)
+	cd $(BACKEND) && $(PY) -m src.services.phase9.recency_quadrant $(WORLD) hook_cluster
+
 # Crawl loop: search API -> candidate accounts -> ingest -> VLM -> next round's queries.
 # Round 0 queries aren't seeded by a script — insert them into crawl_queries
 # by hand (world_slug, round_no=0, query_text, intent='seed', status='pending')
 # before the first run for a new world.
 crawl:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_crawl $(WORLD) $(ROUNDS)
+
+# Re-run the VLM over one world after its response schema changed. Re-fetches
+# each post's video (they're deleted on successful description, and the play
+# URL is long dead) and only then clears vlm_json — a post whose video can't
+# be recovered keeps its old description. DRY=1 to see scope first; ALL=1 to
+# include posts that already carry the current schema.
+redescribe:
+	cd $(BACKEND) && $(PY) -m src.scripts.redescribe_world $(WORLD) $(if $(WIPE),--wipe-first,) $(if $(DRY),--dry-run,)
 
 ui:
 	cd apps/ui && npm run dev

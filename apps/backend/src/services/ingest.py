@@ -40,13 +40,17 @@ _VIDEO_HEADERS = {
 }
 
 
-def _fetch_video(post: dict) -> None:
-    """Downloads the video bytes to disk. Logs on failure, never raises, never
-    rolls back the post.
+def _fetch_video(post: dict) -> bool:
+    """Downloads the video bytes and stores them in GCS. Logs on failure,
+    never raises, never rolls back the post. Returns whether bytes landed.
 
     Downloaded at ingest rather than at VLM time because the play URL is signed
     and short-lived — by the time a batch runs, it's dead. A post with no video
-    file is simply skipped by the VLM claim query.
+    object is simply skipped by the VLM claim query.
+
+    Ingest does not touch Gemini at all: registering the stored object with the
+    Files API belongs to the VLM pass (vision.py), which keeps this function
+    TikTok-and-GCS-only.
 
     Photo-mode/slideshow posts (images + a music track, no real video) still
     populate `play`, but it resolves to the song CDN (content-type audio/*).
@@ -57,7 +61,7 @@ def _fetch_video(post: dict) -> None:
     """
     url = (post.get("media_urls") or {}).get("play")
     if not url:
-        return
+        return False
 
     try:
         response = httpx.get(url, headers=_VIDEO_HEADERS, timeout=VIDEO_FETCH_TIMEOUT, follow_redirects=True)
@@ -65,10 +69,12 @@ def _fetch_video(post: dict) -> None:
         if not response.headers.get("content-type", "").startswith("video/"):
             logger.warning("play url for post=%s is not a video (content-type=%s) — skipping",
                            post["id"], response.headers.get("content-type"))
-            return
+            return False
         store_video(post["id"], response.content)
+        return True
     except Exception as exc:
         logger.warning("video fetch failed for post=%s: %s", post["id"], exc)
+        return False
 
 
 def ingest_account(

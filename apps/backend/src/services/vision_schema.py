@@ -31,8 +31,9 @@ already carry the relationship signal.
 extract_terms in terms.py is the mirror of flatten_for_blob — same input,
 different projection. When SCHEMA_VERSION changes here, check there too.
 
-RESPONSE_SCHEMA lives under data/<world>/crawl/vlm_schema.json, alongside that
-world's query_prompt.txt — it's the one part of this contract
+RESPONSE_SCHEMA and SYSTEM_INSTRUCTION live under data/<world>/crawl/vlm_schema.json
+and vlm_system_instruction.txt, alongside that world's query_prompt.txt — it's the
+one part of this contract
 most likely to get hand-edited field-by-field (a new enum value, a tweaked
 description), and every string in it is prompt text Gemini reads, not
 documentation. describe_posts() stays world-blind — this is not a per-post
@@ -52,45 +53,20 @@ from src.services.crawl_config import DATA_DIR
 
 SCHEMA_VERSION = 3
 
-ACTIVE_SCHEMA_WORLD = "romance"  # the one thing to change to retarget this whole process at a different world's crawl
+ACTIVE_SCHEMA_WORLD = "ai-romance-subworld"  # the one thing to change to retarget this whole process at a different world's crawl
 
 
 def load_response_schema(world_slug: str) -> dict:
     return json.loads((DATA_DIR / world_slug / "crawl" / "vlm_schema.json").read_text())
 
 
+def load_system_instruction(world_slug: str) -> str:
+    return (DATA_DIR / world_slug / "crawl" / "vlm_system_instruction.txt").read_text()
+
+
 RESPONSE_SCHEMA = load_response_schema(ACTIVE_SCHEMA_WORLD)
 
-SYSTEM_INSTRUCTION = """\
-You analyze short-form vertical videos and return structured JSON.
-
-- Report only what is seen in the video or heard in its audio. Never infer or
-  draw on outside knowledge about brands, people, or places.
-- If a field is not determinable, use null, an empty array, or the
-  'not_applicable' / 'unclear' enum member. Never guess to fill a field.
-- Many videos are not about relationships. For those, every field under
-  `relationship` is "not_applicable", `premise` is null, and `dialogue` is empty.
-  This is expected and correct, not a failure.
-- brand and entities are verbatim only: legible on screen or spoken aloud. A
-  logo you recognize but cannot read is not legible.
-- products are physical goods only. Not services, apps, locations, or software.
-- prominence is "hero" if the video is about the product, "incidental" if it is
-  merely present in frame.
-- transcript, dialogue lines, hook, punchline and on_screen_text are VERBATIM.
-  Do not summarize, correct, paraphrase, or translate. These are the payload.
-- premise is the opposite: not verbatim, and not a description of the footage.
-  It is the underlying situation, phrased as a person would tell a friend.
-- format, format_traits, setting, topics, character dynamic and product names are
-  free text, but always lowercase noun phrases of the stated word count. No
-  sentences, no articles, no punctuation. Describe, do not editorialize:
-  "two person skit", not "hilarious skit".
-- topics must name the specific situation, never the content genre. "delayed text
-  replies" is a topic; "relationship advice" is not.
-- synthetic.presenter is judged ONLY from visual and audio artifacts you can
-  point to in synthetic.signals. Subject matter, production polish, attractiveness
-  and studio lighting are not evidence. When there are no artifacts, answer
-  "real_person" with certainty "low", or "unclear" — never infer from vibe.
-"""
+SYSTEM_INSTRUCTION = load_system_instruction(ACTIVE_SCHEMA_WORLD)
 
 GENERATION_CONFIG = {
     "temperature": 0,
