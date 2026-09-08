@@ -17,14 +17,25 @@ from sqlalchemy import select
 
 from src.db.models import Post, World
 from src.db.session import SessionLocal
-from src.services.routing import normalized_world_matrix, persist_routing_batch, route_posts_batch
+from src.services.routing import apply_ai_romance_split, normalized_world_matrix, persist_routing_batch, route_posts_batch
 
 BATCH_SIZE = 500
 
+# Phase 11: ai-romance-subworld never competes in the embedding argmax — AI vs.
+# real is a hard filter on the VLM's synthetic.presenter judgment, not a second
+# embedding contest (see CLAUDEphase11romance-ai-world and apply_ai_romance_split).
+ROMANCE_SLUG = "romance"
+AI_ROMANCE_SLUG = "ai-romance-subworld"
+
 
 def run_routing(db) -> None:
-    worlds = db.execute(select(World).order_by(World.slug)).scalars().all()  # load once, not per-post
-    world_matrix, world_ids = normalized_world_matrix(worlds)
+    all_worlds = db.execute(select(World).order_by(World.slug)).scalars().all()  # load once, not per-post
+    by_slug = {w.slug: w for w in all_worlds}
+    romance_world = by_slug.get(ROMANCE_SLUG)
+    ai_romance_world = by_slug.get(AI_ROMANCE_SLUG)
+
+    competing_worlds = [w for w in all_worlds if w.slug != AI_ROMANCE_SLUG]
+    world_matrix, world_ids = normalized_world_matrix(competing_worlds)
 
     last_id = None
     total_routed = 0
@@ -39,6 +50,11 @@ def run_routing(db) -> None:
             break
 
         results = route_posts_batch(posts, world_matrix, world_ids)
+        if romance_world and ai_romance_world:
+            for r in results:
+                r["winning_world_id"] = apply_ai_romance_split(
+                    r["winning_world_id"], romance_world.id, ai_romance_world.id, r["post"].vlm_json
+                )
         persist_routing_batch(db, results)
 
         total_routed += len(posts)

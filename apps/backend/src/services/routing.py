@@ -17,6 +17,7 @@ Two shapes are exposed:
 import uuid
 
 import numpy as np
+from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert
 
 from src.db.models import Post, World, WorldPost
@@ -50,6 +51,37 @@ def route_post(post: Post, worlds: list[World]) -> tuple[uuid.UUID, list[float],
     return winning_world_id, post_vec.tolist(), best_sim, text_blob, margin, runner_up_world_id, runner_up_sim
 
 
+def apply_ai_romance_split(
+    winning_world_id: uuid.UUID, romance_world_id: uuid.UUID, ai_romance_world_id: uuid.UUID, vlm_json: dict | None
+) -> uuid.UUID | None:
+    """Phase 11: a post that topically argmaxed to `romance` gets one more,
+    non-embedding decision — real person vs. AI-generated, read straight off
+    the VLM's own synthetic.presenter/certainty judgment rather than a second
+    embedding contest. Embeddings can't see a rendering artifact; the VLM
+    already made that call. `ai-romance-subworld` must never be in the
+    argmax candidate pool that produces `winning_world_id` in the first
+    place (see run_routing.py) — this only reassigns within the posts that
+    already won on topic.
+
+    Low certainty or an ambiguous presenter (animated_character, text_only,
+    unclear, ...) returns None: held out of both worlds rather than forced
+    into one, matching the doc's "not a slop filter, just a topical +
+    presenter gate" framing. Callers must treat None as "delete any existing
+    routing for this post" (see persist_routing/persist_routing_batch)."""
+    if winning_world_id != romance_world_id:
+        return winning_world_id
+
+    synthetic = (vlm_json or {}).get("synthetic") or {}
+    if synthetic.get("certainty") == "low":
+        return None
+    presenter = synthetic.get("presenter")
+    if presenter == "ai_generated_person":
+        return ai_romance_world_id
+    if presenter == "real_person":
+        return romance_world_id
+    return None
+
+
 def _upsert_stmt(rows: list[dict]):
     stmt = insert(WorldPost).values(rows)
     return stmt.on_conflict_do_update(
@@ -66,10 +98,19 @@ def _upsert_stmt(rows: list[dict]):
 
 
 def persist_routing(
-    db, post: Post, winning_world_id: uuid.UUID, post_vec: list[float], blob_text: str, cosine: float, margin: float
+    db, post: Post, winning_world_id: uuid.UUID | None, post_vec: list[float], blob_text: str, cosine: float, margin: float
 ) -> None:
     """Upserts one routing result. account_id comes straight off `post` — no
-    account lookup/join needed, it's already a plain column on Post."""
+    account lookup/join needed, it's already a plain column on Post.
+
+    winning_world_id is None for a post held out by apply_ai_romance_split
+    (topically romance, but the AI/real split couldn't confidently place it) —
+    that deletes any existing routing rather than upserting, since a held-out
+    post must not linger in whichever world an earlier run assigned it."""
+    if winning_world_id is None:
+        db.execute(delete(WorldPost).where(WorldPost.post_id == post.id))
+        db.commit()
+        return
     db.execute(
         _upsert_stmt(
             [
@@ -139,9 +180,17 @@ def route_posts_batch(posts: list[Post], world_matrix: np.ndarray, world_ids: li
 
 
 def persist_routing_batch(db, results: list[dict]) -> None:
-    """Upserts a whole batch of routing results in one statement + one commit."""
+    """Upserts a whole batch of routing results in one statement + one commit.
+
+    A result with winning_world_id=None (see apply_ai_romance_split) is a
+    held-out post, not a routing to persist — deleted instead, so it can't
+    linger under a world an earlier run assigned it."""
     if not results:
         return
+
+    held_out_ids = [r["post"].id for r in results if r["winning_world_id"] is None]
+    if held_out_ids:
+        db.execute(delete(WorldPost).where(WorldPost.post_id.in_(held_out_ids)))
 
     rows = [
         {
@@ -155,6 +204,28 @@ def persist_routing_batch(db, results: list[dict]) -> None:
             "margin": r["margin"],
         }
         for r in results
+        if r["winning_world_id"] is not None
     ]
-    db.execute(_upsert_stmt(rows))
+    if rows:
+        db.execute(_upsert_stmt(rows))
     db.commit()
+
+
+def _self_check() -> None:
+    romance_id, ai_id, other_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+
+    # Not a romance-topic winner at all — split never engages, passed through unchanged.
+    assert apply_ai_romance_split(other_id, romance_id, ai_id, {"synthetic": {"presenter": "ai_generated_person"}}) == other_id
+
+    # Romance winner, hard filter on presenter/certainty.
+    assert apply_ai_romance_split(romance_id, romance_id, ai_id, {"synthetic": {"presenter": "ai_generated_person", "certainty": "high"}}) == ai_id
+    assert apply_ai_romance_split(romance_id, romance_id, ai_id, {"synthetic": {"presenter": "real_person", "certainty": "med"}}) == romance_id
+    assert apply_ai_romance_split(romance_id, romance_id, ai_id, {"synthetic": {"presenter": "ai_generated_person", "certainty": "low"}}) is None
+    assert apply_ai_romance_split(romance_id, romance_id, ai_id, {"synthetic": {"presenter": "unclear", "certainty": "high"}}) is None
+    assert apply_ai_romance_split(romance_id, romance_id, ai_id, None) is None
+
+    print("routing self-check ok")
+
+
+if __name__ == "__main__":
+    _self_check()

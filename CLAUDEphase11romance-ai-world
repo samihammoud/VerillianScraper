@@ -1,0 +1,25 @@
+hase 11 — AI Romance World: creation (v1)
+
+Rationale and the broader analysis strategy are in phase 10. This doc is just the build: what to create now, what to explicitly defer.
+
+World creation
+
+Same creation pattern as any other world (world description, seed queries, query prompt — already written in phase 10). One change from the default pattern: the AI-vs-real-person split is not done by giving ai_romance its own competing world description and letting argmax sort it out. Embeddings can't reliably see "AI-presented" — that's a visual/audio-artifact judgment the VLM already made, not a topical one.
+
+Routing, two separate steps:
+
+Topical match — is this romance/couple content at all. Normal argmax against the (shared) romance-topic description, same as every other world.
+AI/real split — a hard filter on synthetic.presenter, not a second embedding contest. ai_generated_person → ai_romance. real_person → romance. low certainty → held out, not forced into either world.
+
+Posts that fail step 1 are excluded entirely. Note: this only screens for topical irrelevance (not actually a couple/relationship video) — it is not a slop filter. On-topic, farm-repeated content still passes step 1 cleanly. Slop detection is separate, deferred work (see below).
+
+Analysis, v1 — keep this minimal
+Embed premise and setting only. Cluster (agglomerative, phase 9's pattern), rank by account-normalized lift, dedupe near-identical posts first (cosine >= 0.97 on transcript), support floor n_posts >= 8 / n_accounts >= 5.
+That's it for v1. No cross-tabs, no craft-space embeddings, no slop scoring yet — just: what premises and settings show up, and which ones actually have legs.
+Explicitly deferred (not forgotten, just not now)
+Cross-tabs on premise/setting against the enum fields (conflict/register/resolution/characters.pairing) to squeeze more signal out of the same two facets.
+Craft-space embeddings (hook, punchline) per phase 9 Layer 3.
+Slop-vs-realistic scoring (account self-similarity on premise/dialogue embeddings, cross-account template/phrase reuse, a cheap text-only genericness pass over already-extracted fields) — full reasoning in phase 10's notes.
+Comparing ai_romance clusters back against the general romance world's equivalent clusters (the fit/mismatch check).
+
+Come back to this list once premise/setting clustering on its own has been looked at by hand.

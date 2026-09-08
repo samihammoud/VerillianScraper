@@ -23,14 +23,14 @@ from sqlalchemy.orm import Session
 
 from src.config.settings import settings
 from src.db.models import CrawlPromptLog, CrawlQuery, Post, World
-from src.services.crawl_config import load_query_prompt
+from src.services.crawl_config import load_query_prompt, load_seed_queries
 
 logger = logging.getLogger(__name__)
 
 MODEL = "gemini-3.6-flash"
-QUERIES_PER_ROUND = 5  # testing-volume cap; matches crawl.QUERIES_PER_ROUND
-N_EXPLOIT = 2  # specific: go deeper on an observed term
-N_EXPLORE = 3  # general: reach for an adjacent, uncovered corner
+QUERIES_PER_ROUND = 10  # matches crawl.QUERIES_PER_ROUND
+N_EXPLOIT = 6  # specific: go deeper on an observed term
+N_EXPLORE = 4  # general: reach for an adjacent, uncovered corner
 TOP_TERMS = 8
 
 _client = genai.Client(api_key=settings.gemini_api_key)
@@ -93,6 +93,30 @@ def _evidence(db: Session, world_slug: str) -> str:
     )
 
 
+# Words shared across seed lines or too generic to identify a sub-niche; the
+# rest of each seed line is what a query gets substring-matched against.
+_GENERIC = {"find", "finds", "haul", "hauls", "pickup", "pickups", "group",
+            "out", "free", "sale", "date", "and", "the"}
+
+
+def _subniche_terms(seed_line: str) -> list[str]:
+    return [w for w in seed_line.lower().split() if w not in _GENERIC]
+
+
+def _coverage(seeds: list[str], ledger) -> str:
+    """Queries run and new handles found per seed sub-niche. Plain substring
+    match against the seed line's distinctive words — deliberately not a
+    classifier; it only has to be good enough to show which niche the round
+    forgot. A query can count toward more than one niche."""
+    lines = ["SUB-NICHE COVERAGE (queries run, new handles):"]
+    for seed in seeds:
+        terms = _subniche_terms(seed)
+        hits = [q for q in ledger if any(t in q.query_text.lower() for t in terms)]
+        handles = sum(q.new_handles or 0 for q in hits)
+        lines.append(f"  {seed:<32} {len(hits):>3} queries  {handles:>5} new handles")
+    return "\n".join(lines)
+
+
 def _build_prompt(db: Session, world_slug: str, round_no: int) -> str:
     world = db.execute(select(World).where(World.slug == world_slug)).scalar_one()
 
@@ -103,6 +127,7 @@ def _build_prompt(db: Session, world_slug: str, round_no: int) -> str:
     ).scalars().all()
     lines = [f"  {q.round_no}  {q.query_text:<30} {q.handles_found:>5} {q.new_handles:>5}" for q in ledger]
 
+    seeds = load_seed_queries(world_slug)
     return "\n".join(
         [
             f"WORLD: {world.slug} - {world.description}",
@@ -111,6 +136,7 @@ def _build_prompt(db: Session, world_slug: str, round_no: int) -> str:
             *lines,
             "",
             _evidence(db, world_slug),
+            *(["", _coverage(seeds, ledger)] if seeds else []),
         ]
     )
 
@@ -172,3 +198,26 @@ def generate(db: Session, world_slug: str, round_no: int) -> list[CrawlQuery]:
 
     db.commit()
     return inserted
+
+
+def _self_check() -> None:
+    from types import SimpleNamespace
+
+    seeds = load_seed_queries("discount-shopping")
+    assert len(seeds) == 10
+    ledger = [
+        SimpleNamespace(query_text="vintage thrift find", new_handles=12),
+        SimpleNamespace(query_text="thrifting designer denim", new_handles=30),
+        SimpleNamespace(query_text="dollar tree diy", new_handles=5),
+        SimpleNamespace(query_text="dumpster diving bakery", new_handles=7),
+    ]
+    rows = {l.strip().split("  ")[0]: l for l in _coverage(seeds, ledger).splitlines()[1:]}
+    assert "2 queries     42 new handles" in rows["vintage thrift find"]  # "thrifting" counts
+    assert "1 queries      5 new handles" in rows["dollar store haul"]  # "dollar" alone is enough
+    assert "1 queries      7 new handles" in rows["dumpster diving find"]
+    assert "0 queries      0 new handles" in rows["extreme couponing haul"]  # the gap the clause exists to surface
+    print("query_gen self-check ok")
+
+
+if __name__ == "__main__":
+    _self_check()

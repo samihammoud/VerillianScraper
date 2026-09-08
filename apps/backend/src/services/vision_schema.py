@@ -53,7 +53,7 @@ from src.services.crawl_config import DATA_DIR
 
 SCHEMA_VERSION = 3
 
-ACTIVE_SCHEMA_WORLD = "ai-romance-subworld"  # the one thing to change to retarget this whole process at a different world's crawl
+ACTIVE_SCHEMA_WORLD = "discount-shopping"  # the one thing to change to retarget this whole process at a different world's crawl
 
 
 def load_response_schema(world_slug: str) -> dict:

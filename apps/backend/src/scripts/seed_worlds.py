@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from src.db.models import World
 from src.db.session import SessionLocal
+from src.services.crawl_config import load_world
 from src.services.embeddings import embed
 
 WORLDS = [
@@ -201,6 +202,15 @@ WORLDS = [
             "ai avatar couple drama",
             "ai generated couple pov",
         ],
+    },
+    {
+        # Phase 13 on: the reference-embedding text lives in the world's crawl
+        # bundle rather than inline here, so it sits next to the schema and
+        # prompts it has to stay consistent with.
+        "slug": "discount-shopping",
+        "name": "Discount & Value Shopping",
+        "description": load_world("discount-shopping"),
+        "example_snippets": [],
     },
 ]
 

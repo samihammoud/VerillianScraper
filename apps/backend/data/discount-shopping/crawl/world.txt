@@ -1,0 +1,19 @@
+# Reference-embedding text for the discount-shopping world (phase 13).
+# Concrete topical vocabulary only — object types, settings, activities.
+# No rationale, no framing of intent: routing compares this against a post's
+# own visual_description prose, and explanatory sentences only dilute it.
+#
+# The Setting/Objects/Topics layer is not decoration — it mirrors the shape
+# flatten_for_blob() gives every post ("Setting: X. Topics: a, b."), and it is
+# what makes this world competitive against fashion/home/food on a thrifted-
+# outfit or clearance-grocery video. Measured against 44 real thrift/coupon/
+# dumpster posts already in the corpus, the acquisition-mode sentence alone
+# won the argmax 23% of the time; with this layer, 43%. Prose example snippets
+# on top pushed it to 64% but raised mean similarity to 2000 unrelated posts
+# from 0.18 to 0.25 — buying the wins by matching every haul video, so they
+# were left out deliberately.
+
+Content about acquiring items below their retail price or for free: thrift and vintage resale finds, dollar-store and closeout hauls, curb-alert and "buy nothing" community pickups, extreme couponing, dumpster diving, garage-sale flipping, freebie and sample hauls, moving-out giveaways, and expired-date grocery pulls.
+Setting: thrift store racks and aisles, goodwill bins, flea markets, antique malls and booths, garage sale and yard sale tables, estate sales, dollar store shelves, grocery clearance racks, warehouse club aisles, store dumpsters and loading docks, curbside piles and driveways, storage unit auctions.
+Objects: price tags and clearance stickers, receipts and register totals, coupon binders, cardboard boxes and trash bags of finds, hauls laid out on a floor or table, secondhand clothing and shoes, used furniture, vintage glassware and dishes, discontinued and expired packaged food.
+Topics: what an item cost against what it is worth, reselling a find for profit, price comparisons between stores, cleaning and restoring a used item, stacking coupons and discounts.

@@ -310,25 +310,46 @@ def _premise_text(vlm_json: dict | None) -> str | None:
 
 
 def _dedupe_map(posts: list[dict]) -> dict:
-    """post_id -> representative post_id. Reposted/re-voiced clips are the
-    single largest source of fake support in this corpus (per the phase 9
-    doc) — collapse near-identical transcripts before anything gets counted.
-    Posts with no transcript ("silent" per audio.kind, or pre-dialogue
-    schema) can't be deduped this way and are left as singleton groups."""
-    with_transcript = [p for p in posts if p.get("transcript")]
-    mapping = {p["post_id"]: p["post_id"] for p in posts}
-    if len(with_transcript) < 2:
-        return mapping
+    """post_id -> representative post_id, in two stages.
 
-    vectors = np.array(embed_batch([p["transcript"] for p in with_transcript]))
-    sim = cosine_similarity_matrix(vectors)
-    cluster_ids = cluster_by_threshold(sim, threshold=PREMISE_DEDUPE_THRESHOLD)
+    Stage 1 collapses exact-text duplicates first. This matters beyond being
+    a free win on premise/hook/punchline (an exact repeat is trivially the
+    same situation): `setting_cluster` (phase 11) embeds a short, highly
+    repeated controlled-vocabulary field, unlike premise's near-unique
+    sentences — without this, two distinct HDBSCAN clusters can each pick the
+    identical string as their medoid and collide on WorldTermStat's PK
+    (world_id, facet, canon_term). Collapsing to one representative per exact
+    string before clustering makes that structurally impossible: each string
+    then belongs to at most one cluster.
 
-    rep_by_cluster: dict[int, str] = {}
-    for post, cid in zip(with_transcript, cluster_ids):
-        rep = rep_by_cluster.setdefault(cid, post["post_id"])
-        mapping[post["post_id"]] = rep
-    return mapping
+    Stage 2 is the original near-duplicate pass over transcripts (reposted/
+    re-voiced clips — same situation, different wording), run only over the
+    stage-1 representatives. Posts with no transcript aren't deduped further
+    here and stay singleton groups."""
+    text_rep: dict[str, str] = {}
+    stage1 = {p["post_id"]: text_rep.setdefault(p["text"], p["post_id"]) for p in posts}
+
+    reps = [p for p in posts if stage1[p["post_id"]] == p["post_id"]]
+    with_transcript = [p for p in reps if p.get("transcript")]
+    stage2 = {p["post_id"]: p["post_id"] for p in reps}
+    if len(with_transcript) >= 2:
+        vectors = np.array(embed_batch([p["transcript"] for p in with_transcript]))
+        sim = cosine_similarity_matrix(vectors)
+        cluster_ids = cluster_by_threshold(sim, threshold=PREMISE_DEDUPE_THRESHOLD)
+
+        rep_by_cluster: dict[int, str] = {}
+        for post, cid in zip(with_transcript, cluster_ids):
+            rep = rep_by_cluster.setdefault(cid, post["post_id"])
+            stage2[post["post_id"]] = rep
+
+    return {pid: stage2[stage1[pid]] for pid in stage1}
+
+
+def _setting_text(vlm_json: dict | None) -> str | None:
+    if not vlm_json:
+        return None
+    setting = vlm_json.get("setting")
+    return setting.strip() if setting else None
 
 
 def _hook_text(vlm_json: dict | None) -> str | None:
@@ -480,6 +501,18 @@ def _premise_clusters(db, world: World, world_median: float) -> tuple[list[dict]
     return _text_field_clusters(db, world, world_median, "premise_cluster", _premise_text)
 
 
+def _setting_clusters(db, world: World, world_median: float) -> tuple[list[dict], list[dict]]:
+    """Phase 11 analysis v1 (CLAUDEphase11romance-ai-world) — situation space's
+    other half. Unlike premise, `setting` is already a normal CLUSTERED_FACET
+    short noun-phrase (see terms.py/_aggregate) with its own generic 0.86-
+    threshold rollup; this is a second, sentence-level pass over the same raw
+    field, reusing premise's exact thresholds (8 posts/5 accounts, 0.97
+    transcript dedupe) per the doc's spec rather than new constants. Runs for
+    every world through the generic rollup() loop below, same as premise/hook/
+    punchline — harmless elsewhere, since `setting` exists in every schema."""
+    return _text_field_clusters(db, world, world_median, "setting_cluster", _setting_text)
+
+
 def _hook_clusters(db, world: World, world_median: float) -> tuple[list[dict], list[dict]]:
     """Phase 9 layer 3 — hook space. Embeds `hook` verbatim (the doc is explicit
     that hook phrasings transfer across situations, so this is deliberately a
@@ -512,6 +545,7 @@ def rollup(db, world_slug: str) -> list[dict]:
 
     for label, cluster_fn in [
         ("premise_cluster", _premise_clusters),
+        ("setting_cluster", _setting_clusters),
         ("hook_cluster", _hook_clusters),
         ("punchline_cluster", _punchline_clusters),
     ]:
@@ -529,6 +563,22 @@ def rollup(db, world_slug: str) -> list[dict]:
             f"median lift {median_lift:+.4f} is far from zero — baseline is likely computed "
             "over a different post set than the terms (see rollup()'s world_median comment)"
         )
+
+    # Defensive dedupe on WorldTermStat's own PK (world_id, facet, canon_term) right
+    # before the write that enforces it. Two independent facet passes can't collide
+    # (facet is part of the key), but within one embedding-cluster facet a genuine
+    # collision has been observed on the real romance corpus — HDBSCAN's cluster
+    # assignment shifts between runs as the underlying post/embedding set changes,
+    # and a rare case produced two clusters whose medoids landed on the same exact
+    # text. Keep the row with more support (n_posts) as the more representative one.
+    deduped: dict[tuple, dict] = {}
+    for s in stats:
+        key = (s["facet"], s["canon_term"])
+        if key not in deduped or s["n_posts"] > deduped[key]["n_posts"]:
+            deduped[key] = s
+    if len(deduped) != len(stats):
+        print(f"  dropped {len(stats) - len(deduped)} duplicate (facet, canon_term) row(s) before write")
+    stats = list(deduped.values())
 
     db.execute(delete(WorldTermStat).where(WorldTermStat.world_id == world.id))
     if stats:

@@ -1,0 +1,13 @@
+# Round 0 — one query per sub-niche. query_gen also reads this file as the
+# sub-niche list for its SUB-NICHE COVERAGE evidence block, so keep one
+# sub-niche per line.
+vintage thrift find
+dollar store haul
+curb alert free find
+buy nothing group pickup
+extreme couponing haul
+dumpster diving find
+garage sale flip
+free sample haul
+moving out giveaway
+expired date grocery pickup

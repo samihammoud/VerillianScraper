@@ -303,10 +303,16 @@ function DrilldownGrid({ slug, selected, onClose }) {
   );
 }
 
+// Worlds whose posts get described under the romance/dialogue VLM schema
+// (data/<slug>/crawl/vlm_schema.json) rather than the leaner product schema —
+// ai-romance-subworld shares romance's schema (see CLAUDEphase11romance-ai-world),
+// so it gets the same relationship/situation panels, not the product-world ones.
+const ROMANCE_SCHEMA_WORLDS = ["romance", "ai-romance-subworld"];
+
 // Grouped so the terms view shows one category at a time instead of six
-// stacked rows — romanceOnly categories only exist because romance's schema
-// (data/romance/crawl/vlm_schema.json) adds a dialogue/relationship layer the
-// product worlds don't have (see CLAUDE.md's overview section).
+// stacked rows — romanceOnly categories only exist because the romance-schema
+// worlds add a dialogue/relationship layer the product worlds don't have (see
+// CLAUDE.md's overview section).
 const CATEGORIES = [
   {
     key: "core",
@@ -343,7 +349,10 @@ const CATEGORIES = [
     key: "situations",
     label: "Situations",
     romanceOnly: true,
-    panels: [{ facet: "premise_cluster", label: "Situations (premise clusters)", fullWidth: true }],
+    panels: [
+      { facet: "premise_cluster", label: "Situations (premise clusters)", fullWidth: true },
+      { facet: "setting_cluster", label: "Settings (setting clusters)", fullWidth: true },
+    ],
   },
   {
     key: "hooks",
@@ -367,7 +376,7 @@ export default function WorldsOverview() {
     if (worlds?.length && !slug) setSlug(worlds[0].slug);
   }, [worlds, slug]);
 
-  const availableCategories = CATEGORIES.filter((c) => !c.romanceOnly || slug === "romance");
+  const availableCategories = CATEGORIES.filter((c) => !c.romanceOnly || ROMANCE_SCHEMA_WORLDS.includes(slug));
 
   useEffect(() => {
     if (!availableCategories.some((c) => c.key === category)) setCategory("core");

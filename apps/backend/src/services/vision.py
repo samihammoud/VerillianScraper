@@ -426,7 +426,22 @@ def _finalize_videos(candidate_ids: list[UUID]) -> None:
         ).all()
         for post_id, vlm_json, attempts in rows:
             if vlm_json is not None or attempts >= MAX_ATTEMPTS:
-                mark_described(post_id)
+                try:
+                    mark_described(post_id)
+                except Exception as exc:
+                    # Archival is bookkeeping over work that is already
+                    # committed — vlm_json is written and the registration is
+                    # deleted by the time we get here. A transient GCS blip
+                    # here used to raise straight out of describe_posts() and
+                    # kill the whole multi-round crawl AFTER its batch had
+                    # succeeded (2026-09-08: RemoteDisconnected on copy_blob,
+                    # 5983 descriptions collected, round 1 never generated).
+                    # ponytail: the video stays under non-described/, so every
+                    # later pass re-registers it once and never re-describes
+                    # it (pass B needs vlm_json IS NULL). Harmless at a few
+                    # posts; if it accumulates, sweep GCS for listed ids that
+                    # already have vlm_json and archive those.
+                    logger.warning("archiving video for post=%s failed: %s", post_id, exc)
     finally:
         db.close()
 
