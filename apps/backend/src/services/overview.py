@@ -207,44 +207,28 @@ def account_medians(db, world: World) -> dict:
     return {account_id: float(np.median(metrics)) for account_id, metrics in by_account.items()}
 
 
-def _aggregate(db, world: World, world_median: float, account_median: dict) -> list[dict]:
-    """Step 6: group post_terms by (facet, canon_term), apply the support
-    floor, compute lift. Incidental products are excluded entirely from the
-    default product ranking — a lamp that happens to be in frame is not what
-    is winning."""
-    rows = db.execute(
-        select(
-            PostTerm.facet,
-            PostTerm.canon_term,
-            PostTerm.post_id,
-            PostTerm.account_id,
-            PostTerm.prominence,
-            PostTerm.metric,
-            PostTerm.raw_term,
-        ).where(PostTerm.world_id == world.id, PostTerm.low_conf.is_(False), PostTerm.metric.isnot(None))
-    ).all()
+def _new_group() -> dict:
+    return {"posts_by_account": defaultdict(set), "n_hero": 0, "metrics": [], "account_deltas": [], "variants": set()}
 
-    groups: dict[tuple[str, str], dict] = defaultdict(
-        lambda: {"post_ids": set(), "account_ids": set(), "n_hero": 0, "metrics": [], "account_deltas": [], "variants": set()}
-    )
-    for facet, canon_term, post_id, account_id, prominence, metric, raw_term in rows:
-        if facet == "product" and prominence == "incidental":
-            continue
-        g = groups[(facet, canon_term)]
-        g["post_ids"].add(post_id)
-        g["account_ids"].add(account_id)
-        if prominence == "hero":
-            g["n_hero"] += 1
-        g["metrics"].append(metric)
-        if account_id in account_median:
-            g["account_deltas"].append(metric - account_median[account_id])
-        g["variants"].add(raw_term)
 
+def _add_to_group(g: dict, post_id, account_id, metric: float, raw_term: str, account_median: dict) -> None:
+    g["posts_by_account"][account_id].add(post_id)
+    g["metrics"].append(metric)
+    if account_id in account_median:
+        g["account_deltas"].append(metric - account_median[account_id])
+    g["variants"].add(raw_term)
+
+
+def _group_stats(world: World, groups: dict, world_median: float, min_effective_accounts: float = 0.0) -> list[dict]:
+    """Support floor + lift, shared by the world-wide _aggregate and phase 15's
+    discount slice — same ranking, different input set."""
     stats = []
     for (facet, canon_term), g in groups.items():
-        n_posts = len(g["post_ids"])
-        n_accounts = len(g["account_ids"])
+        n_posts = sum(len(post_ids) for post_ids in g["posts_by_account"].values())
+        n_accounts = len(g["posts_by_account"])
         if n_posts < MIN_POSTS or n_accounts < MIN_ACCOUNTS:
+            continue
+        if min_effective_accounts and _effective_accounts(g["posts_by_account"]) < min_effective_accounts:
             continue
         median_m = float(np.median(g["metrics"]))
         lift = median_m - world_median
@@ -266,6 +250,35 @@ def _aggregate(db, world: World, world_median: float, account_median: dict) -> l
             }
         )
     return stats
+
+
+def _aggregate(db, world: World, world_median: float, account_median: dict) -> list[dict]:
+    """Step 6: group post_terms by (facet, canon_term), apply the support
+    floor, compute lift. Incidental products are excluded entirely from the
+    default product ranking — a lamp that happens to be in frame is not what
+    is winning."""
+    rows = db.execute(
+        select(
+            PostTerm.facet,
+            PostTerm.canon_term,
+            PostTerm.post_id,
+            PostTerm.account_id,
+            PostTerm.prominence,
+            PostTerm.metric,
+            PostTerm.raw_term,
+        ).where(PostTerm.world_id == world.id, PostTerm.low_conf.is_(False), PostTerm.metric.isnot(None))
+    ).all()
+
+    groups: dict[tuple[str, str], dict] = defaultdict(_new_group)
+    for facet, canon_term, post_id, account_id, prominence, metric, raw_term in rows:
+        if facet == "product" and prominence == "incidental":
+            continue
+        g = groups[(facet, canon_term)]
+        _add_to_group(g, post_id, account_id, metric, raw_term, account_median)
+        if prominence == "hero":
+            g["n_hero"] += 1
+
+    return _group_stats(world, groups, world_median)
 
 
 def world_median(db, world: World) -> float:
@@ -556,6 +569,12 @@ def rollup(db, world_slug: str) -> list[dict]:
         print(f"  {label}: {len(cluster_post_terms)} posts, {len(cluster_stats)} clusters above the support floor")
         stats = stats + cluster_stats
 
+    discount_stats, discount_post_terms = _discount_clusters(db, world, median, by_account)
+    if discount_post_terms:
+        db.execute(insert(PostTerm).values(discount_post_terms))
+        db.commit()
+    stats = stats + discount_stats
+
     if stats:
         median_lift = float(np.median([s["lift"] for s in stats]))
         print(f"  median lift across {len(stats)} ranked terms: {median_lift:+.4f}")
@@ -586,3 +605,159 @@ def rollup(db, world_slug: str) -> list[dict]:
     db.commit()
 
     return stats
+
+
+# --- Phase 15: discount-hero product & format ranking (CLAUDEphase15discount-analysis-creation.md) ---
+#
+# Not a new ranking algorithm — the same groups -> _group_stats path the world-wide
+# rollup uses, just fed a filtered slice: product instances whose value_signal says
+# the creator got a deal, and the posts those instances came from. Runs off the
+# post_terms/canon_terms the main rollup already wrote, so it costs no extra
+# embedding calls. prominence is deliberately ignored here (see the doc: "was the
+# camera on this thing" is a different question from "was this a discount story").
+DISCOUNT_COSTS = {"free", "deep_discount", "discount"}
+MIN_EFFECTIVE_ACCOUNTS = 4  # phase 12's concentration floor: 1/sum(account post share^2)
+
+
+def _effective_accounts(posts_by_account: dict) -> float:
+    """Inverse Herfindahl over the term's posts-per-account distribution — 10
+    posts split 5/5 across two accounts is 2.0, split 9/1 is ~1.2. Catches the
+    term that clears n_accounts >= 3 only because one account posts it 40 times
+    and two others posted it once."""
+    total = sum(len(post_ids) for post_ids in posts_by_account.values())
+    if not total:
+        return 0.0
+    return 1.0 / sum((len(post_ids) / total) ** 2 for post_ids in posts_by_account.values())
+
+
+def _discount_names(vlm_json: dict | None) -> tuple[set, int, int]:
+    """One post's qualifying product names, plus (total, qualifying) instance
+    counts. A product with no name still counts toward the ratio — it's a real
+    instance the VLM priced, just not one we can rank."""
+    names, total, qualifying = set(), 0, 0
+    for product in (vlm_json or {}).get("products") or []:
+        product = product or {}
+        total += 1
+        if (product.get("value_signal") or {}).get("acquisition_cost") in DISCOUNT_COSTS:
+            qualifying += 1
+            if name := product.get("name"):
+                names.add(name)
+    return names, total, qualifying
+
+
+def _discount_names_by_post(db, world: World) -> tuple[dict, int, int]:
+    """Step 1 — per post, the products[].name values whose acquisition_cost is a
+    discount/free signal. Also returns (qualifying, total) instance counts for the
+    doc's sanity check: near-0% means value_signal isn't populating, near-100%
+    means the filter isn't filtering."""
+    rows = db.execute(
+        select(Post.id, Post.vlm_json)
+        .join(WorldPost, WorldPost.post_id == Post.id)
+        .where(WorldPost.world_id == world.id, Post.vlm_json.isnot(None))
+    ).all()
+
+    names_by_post: dict = {}
+    n_total = n_qualifying = 0
+    for post_id, vlm_json in rows:
+        names, total, qualifying = _discount_names(vlm_json)
+        n_total += total
+        n_qualifying += qualifying
+        if names:
+            names_by_post[post_id] = names
+    return names_by_post, n_qualifying, n_total
+
+
+def _discount_clusters(db, world: World, world_median: float, account_median: dict) -> tuple[list[dict], list[dict]]:
+    """Steps 2-3 — rank products across the step-1 instances, and format /
+    format_trait across the posts those instances came from (post-level facets:
+    a post with one discounted and two full-price items still counts once)."""
+    names_by_post, n_qualifying, n_total = _discount_names_by_post(db, world)
+    share = (n_qualifying / n_total) if n_total else 0.0
+    print(f"  discount: {n_qualifying}/{n_total} product instances qualify ({share:.1%}), {len(names_by_post)} posts")
+    if not names_by_post:
+        return [], []
+
+    rows = db.execute(
+        select(
+            PostTerm.facet, PostTerm.canon_term, PostTerm.post_id, PostTerm.account_id,
+            PostTerm.metric, PostTerm.raw_term,
+        ).where(
+            PostTerm.world_id == world.id,
+            PostTerm.facet.in_(["product", "format", "format_trait"]),
+            PostTerm.low_conf.is_(False),
+            PostTerm.metric.isnot(None),
+        )
+    ).all()
+
+    groups: dict[tuple[str, str], dict] = defaultdict(_new_group)
+    post_term_rows = {}
+    for facet, canon_term, post_id, account_id, metric, raw_term in rows:
+        if post_id not in names_by_post:  # filtered here rather than as a 5-figure SQL IN list
+            continue
+        if facet == "product" and raw_term not in names_by_post[post_id]:
+            continue  # a full-price/not_stated item in an otherwise-discount post
+        facet = f"discount_{facet}"
+        _add_to_group(groups[(facet, canon_term)], post_id, account_id, metric, raw_term, account_median)
+        post_term_rows[(post_id, facet, raw_term)] = {
+            "post_id": post_id, "world_id": world.id, "account_id": account_id,
+            "facet": facet, "raw_term": raw_term, "norm_term": canon_term,
+            "canon_term": canon_term, "prominence": None, "metric": metric, "low_conf": False,
+        }
+
+    stats = _group_stats(world, groups, world_median, min_effective_accounts=MIN_EFFECTIVE_ACCOUNTS)
+    kept = {(s["facet"], s["canon_term"]) for s in stats}
+    return stats, [r for r in post_term_rows.values() if (r["facet"], r["canon_term"]) in kept]
+
+
+def _self_check() -> None:
+    """Phase 15's pure bits — no DB, no embeddings."""
+    vlm = {"products": [
+        {"name": "wool trench coat", "value_signal": {"acquisition_cost": "deep_discount"}},
+        {"name": "cast iron skillet", "value_signal": {"acquisition_cost": "free"}},
+        {"name": "table lamp", "value_signal": {"acquisition_cost": "full_price"}},
+        {"name": "mug", "value_signal": {"acquisition_cost": "not_stated"}},
+        {"name": None, "value_signal": {"acquisition_cost": "discount"}},
+    ]}
+    names, total, qualifying = _discount_names(vlm)
+    assert names == {"wool trench coat", "cast iron skillet"}
+    assert (total, qualifying) == (5, 3)  # the nameless discount instance still counts
+    assert _discount_names(None) == (set(), 0, 0)
+    assert _discount_names({"products": None}) == (set(), 0, 0)
+    assert _discount_names({"products": [{"name": "x"}]}) == (set(), 1, 0)  # no value_signal -> not a deal
+
+    assert abs(_effective_accounts({"a": {1, 2, 3, 4, 5}}) - 1.0) < 1e-9
+    assert abs(_effective_accounts({"a": {1, 2}, "b": {3, 4}}) - 2.0) < 1e-9
+    assert _effective_accounts({}) == 0.0
+    # 9/1/1/1: clears n_accounts=4 but is one account wearing a hat
+    assert _effective_accounts({"a": set(range(9)), "b": {9}, "c": {10}, "d": {11}}) < 2.0
+
+    class _W:
+        id = "world"
+
+    def group(posts_by_account, metrics):
+        g = _new_group()
+        for account_id, post_ids in posts_by_account.items():
+            g["posts_by_account"][account_id] = set(post_ids)
+        g["metrics"] = metrics
+        g["variants"] = {"v"}
+        return g
+
+    spread = {"a": [1, 2], "b": [3, 4], "c": [5, 6], "d": [7, 8]}
+    concentrated = {"a": [1, 2, 3, 4, 5, 6, 7, 8, 9], "b": [10], "c": [11], "d": [12]}
+    groups = {
+        ("discount_product", "spread"): group(spread, [2.0] * 8),
+        ("discount_product", "concentrated"): group(concentrated, [2.0] * 12),
+        ("discount_product", "thin"): group({"a": [1], "b": [2], "c": [3]}, [2.0] * 3),
+    }
+    stats = _group_stats(_W(), groups, world_median=1.0, min_effective_accounts=MIN_EFFECTIVE_ACCOUNTS)
+    assert {s["canon_term"] for s in stats} == {"spread"}, stats
+    assert stats[0]["n_posts"] == 8 and stats[0]["n_accounts"] == 4
+    assert abs(stats[0]["lift"] - 1.0) < 1e-9
+    # without the concentration floor, only the n_posts/n_accounts floor applies
+    assert {s["canon_term"] for s in _group_stats(_W(), groups, 1.0)} == {"spread", "concentrated"}
+
+    print("overview self-check ok")
+
+
+if __name__ == "__main__":
+    _self_check()

@@ -1,0 +1,40 @@
+{
+  "hook": "AM I YOUR SOULMATE? Am I your soulmate?",
+  "transcript": "Am I your soulmate? Yes. That's statistically unlikely. Ugh, why are you like this? There are 4 billion people out there for you, and your soulmate happens to be the guy you met in the supermarket? Soulmates aren't found, Kevin. They're made. I like that. Your turn to ask.",
+  "on_screen_text": [
+    "AM I YOUR SOULMATE?",
+    "I",
+    "soulmate?",
+    "Yes.",
+    "That's",
+    "unlikely.",
+    "are",
+    "There",
+    "out",
+    "soulmate",
+    "met",
+    "Soulmates",
+    "Kevin,",
+    "made.",
+    "that.",
+    "turn",
+    "think you know your partner? find out.",
+    "boredinary.com",
+    "Follow for more episodes"
+  ],
+  "structure": [
+    "abrupt opening question",
+    "skeptical logical retort",
+    "philosophical relationship perspective",
+    "acceptance and game continuation",
+    "closing promotional screen"
+  ],
+  "sentence_pattern": "short conversational back and forth",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "witty, deadpan, intimate",
+  "pacing_cues": [
+    "natural pauses between dialogue turns",
+    "unbroken static shot throughout"
+  ],
+  "signoff": "think you know your partner? find out. boredinary.com Follow for more episodes"
+}

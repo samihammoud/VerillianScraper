@@ -24,10 +24,13 @@ import { colorFor } from "./palette.js";
   its provenance.
 */
 
+const MAX_RENDERED_POSTS = 4000;
 const API = "http://127.0.0.1:8000"; // uvicorn binds IPv4-only by default; "localhost" can resolve to ::1 first and fail
 
 export default function App() {
   const [data, setData] = useState(null);
+  const [postTotal, setPostTotal] = useState(0);
+  const [counts, setCounts] = useState({}); // from the FULL post set, before sampling
   const [error, setError] = useState(null);
   const [hoveredWorldId, setHoveredWorldId] = useState(null);
   const [view, setView] = useState("topology"); // "topology" | "worlds" — client-side toggle, no router lib installed
@@ -35,20 +38,23 @@ export default function App() {
   useEffect(() => {
     fetch(`${API}/api/topology`)
       .then((r) => r.json())
-      .then(setData)
+      .then((d) => {
+        setPostTotal(d.posts.length);
+        const c = {};
+        for (const p of d.posts) c[p.world_id] = (c[p.world_id] || 0) + 1;
+        setCounts(c);
+        // ponytail: the field is decorative — a fixed sample reads identically at
+        // this dot size and keeps the scene at a constant cost no matter how many
+        // posts route. Raise MAX_RENDERED_POSTS if the density ever looks thin.
+        const step = Math.ceil(d.posts.length / MAX_RENDERED_POSTS);
+        setData({ ...d, posts: step > 1 ? d.posts.filter((_, i) => i % step === 0) : d.posts });
+      })
       .catch((e) => setError(e.message));
   }, []);
 
   const colorByWorldId = useMemo(() => {
     if (!data) return {};
     return Object.fromEntries(data.worlds.map((w, i) => [w.id, colorFor(i)]));
-  }, [data]);
-
-  const counts = useMemo(() => {
-    if (!data) return {};
-    const c = {};
-    for (const p of data.posts) c[p.world_id] = (c[p.world_id] || 0) + 1;
-    return c;
   }, [data]);
 
   return (
@@ -97,7 +103,7 @@ export default function App() {
 
         {view === "topology" && data && (
           <div className="mono" style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>
-            {data.worlds.length} WORLDS &middot; {data.posts.length} POSTS
+            {data.worlds.length} WORLDS &middot; {postTotal} POSTS
           </div>
         )}
       </header>
@@ -152,7 +158,7 @@ export default function App() {
                   textShadow: "0 0 calc(var(--p-glow, 0.5) * 16px) var(--accent)",
                 }}
               >
-                {data.posts.length}
+                {postTotal}
               </div>
               <div className="mono" style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: 0.5, marginTop: 4 }}>
                 POSTS ROUTED &middot; {data.worlds.length} WORLDS

@@ -1,0 +1,32 @@
+{
+  "hook": "MEMORY TEST",
+  "transcript": "Iced matcha latte with six scoops of matcha, two pumps of vanilla, and one pump of caramel with extra sweet cream. Wow, you got it right this time. Your love language is memory tests.",
+  "on_screen_text": [
+    "MEMORY TEST",
+    "latte",
+    "of",
+    "caramel",
+    "sweet",
+    "Wow,",
+    "right",
+    "boredinary life.",
+    "New episode when something interesting happens...",
+    "language",
+    "tests."
+  ],
+  "structure": [
+    "title card intro",
+    "detailed order recitation",
+    "surprised positive reaction",
+    "deadpan humorous conclusion",
+    "outro title card"
+  ],
+  "sentence_pattern": "long itemized list then short responses",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "deadpan, playful, warm",
+  "pacing_cues": [
+    "deliberate recitation tempo",
+    "brief pause before punchline"
+  ],
+  "signoff": "New episode when something interesting happens..."
+}

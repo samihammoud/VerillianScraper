@@ -1,0 +1,39 @@
+{
+  "hook": "A FUNNY KEVIN I have a joke I've been saving up to tell you.",
+  "transcript": "I have a joke I've been saving up to tell you. Let's hear it. Why did Einstein never use this finger? Why? Because it's my finger. I think you should hang out with your boys more often.",
+  "on_screen_text": [
+    "A FUNNY KEVIN",
+    "have",
+    "saving",
+    "you.",
+    "hear",
+    "Why",
+    "never",
+    "finger?",
+    "Why?",
+    "Because",
+    "my",
+    "finger.",
+    "boredinary life.",
+    "out",
+    "often.",
+    "Follow for more episodes"
+  ],
+  "structure": [
+    "joke premise introduction",
+    "partner invites joke",
+    "riddle setup question",
+    "partner prompt question",
+    "deadpan punchline delivery",
+    "unimpressed reaction comment"
+  ],
+  "sentence_pattern": "short conversational question and answer",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "deadpan, dry, playful",
+  "pacing_cues": [
+    "steady dialogue pauses",
+    "pause before punchline",
+    "pause before final reaction"
+  ],
+  "signoff": "Follow for more episodes"
+}

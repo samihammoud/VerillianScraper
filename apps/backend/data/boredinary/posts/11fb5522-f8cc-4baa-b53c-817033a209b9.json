@@ -1,0 +1,32 @@
+{
+  "hook": "BACK SCRATCHES Kevin, you've been on the same spot for the past 3 minutes.",
+  "transcript": "Kevin, you've been on the same spot for the past 3 minutes. Is your heart really into this? Do you actually want to do it?",
+  "on_screen_text": [
+    "BACK SCRATCHES",
+    "Kevin,",
+    "same",
+    "past",
+    "minutes.",
+    "your",
+    "this?",
+    "Do",
+    "it?",
+    "boredinary life.",
+    "New episode when something interesting happens..."
+  ],
+  "structure": [
+    "title card introduction",
+    "spoken casual complaint",
+    "probing rhetorical questions",
+    "resigned return to position",
+    "closing title card"
+  ],
+  "sentence_pattern": "short declarative statement then questions",
+  "dialogue_mode": "pov_addressed_to_one_person",
+  "tone": "deadpan, mildly irritated",
+  "pacing_cues": [
+    "unhurried dialogue delivery",
+    "beat of silence before outro"
+  ],
+  "signoff": "none"
+}

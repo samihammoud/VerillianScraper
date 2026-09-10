@@ -324,6 +324,21 @@ const CATEGORIES = [
     ],
   },
   {
+    // Phase 15 — the same ranking restricted to product instances the creator
+    // framed as a deal (products[].value_signal.acquisition_cost). Not gated to
+    // discount-shopping: routing is topical, so discount posts land in
+    // fashion/food/beauty/... too, and these facets are populated wherever
+    // value_signal is. Worlds described under a schema without it just show
+    // "no ranked terms yet".
+    key: "discounts",
+    label: "Discount Stories",
+    panels: [
+      { facet: "discount_product", label: "Discounted Products" },
+      { facet: "discount_format", label: "Formats Showcasing Them" },
+      { facet: "discount_format_trait", label: "Format Traits" },
+    ],
+  },
+  {
     key: "signals",
     label: "Relationship Signals",
     romanceOnly: true,

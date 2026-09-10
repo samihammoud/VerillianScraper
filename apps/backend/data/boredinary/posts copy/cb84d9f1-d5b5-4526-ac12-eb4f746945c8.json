@@ -1,0 +1,27 @@
+{
+  "hook": "I'M OBSESSED WITH YOU\nKevin I think I'm obsessed with you.",
+  "transcript": "Kevin I think I'm obsessed with you. Is that bad? I think so. Why? I'm so dependent on you. I just want to exist around you. Why is that bad? Sometimes I want to be inside your skin and involve you in everything I do. Sometimes I even want to bite you. I don't think this is normal. Am I weird? I think it's really cute. I even eat the drumsticks part of the wings even though I hate them. I do it cuz you like doing that twisty bone thing. You always look so proud. You better marry me. Otherwise there will be a Netflix documentary about us.",
+  "on_screen_text": [
+    "I'M OBSESSED WITH YOU",
+    "boredinary",
+    "think you know your partner? find out.",
+    "boredinary.com",
+    "Follow for more episodes"
+  ],
+  "structure": [
+    "confession of obsession",
+    "partner questions concern",
+    "listing obsessive behaviors",
+    "partner reassurance",
+    "humorous closing ultimatum",
+    "call to action card"
+  ],
+  "sentence_pattern": "casual back and forth dialogue",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "quirky, humorous, affectionate",
+  "pacing_cues": [
+    "steady dialogue rhythm",
+    "brief pause before punchline"
+  ],
+  "signoff": "Follow for more episodes"
+}

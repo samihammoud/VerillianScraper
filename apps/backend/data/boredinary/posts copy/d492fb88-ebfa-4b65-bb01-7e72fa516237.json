@@ -1,0 +1,39 @@
+{
+  "hook": "SHARING PASSWORDS Should we share passwords? No. Why?",
+  "transcript": "Should we share passwords? No. Why? Why should we? Lots of couples do it for reassurance. If I want to hide something from you, I will. Sharing passwords won't stop it or build trust. It'll just give you a hundred harmless things to overthink. I agree. I don't want to overthink your emails.",
+  "on_screen_text": [
+    "SHARING PASSWORDS",
+    "share",
+    "Why?",
+    "should",
+    "of",
+    "reassurance.",
+    "If",
+    "you,",
+    "Sharing",
+    "stop",
+    "It'll",
+    "harmless",
+    "overthink.",
+    "I",
+    "emails.",
+    "think you know your partner? find out.",
+    "boredinary.com",
+    "Follow for more episodes"
+  ],
+  "structure": [
+    "question and immediate refusal",
+    "justification versus counter logic",
+    "expanded reasoning against sharing",
+    "ironic agreement and acceptance",
+    "website call to action"
+  ],
+  "sentence_pattern": "short direct back and forth lines",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "deadpan, calm, witty",
+  "pacing_cues": [
+    "steady conversational rhythm",
+    "dry delivery with subtle pauses"
+  ],
+  "signoff": "Follow for more episodes"
+}

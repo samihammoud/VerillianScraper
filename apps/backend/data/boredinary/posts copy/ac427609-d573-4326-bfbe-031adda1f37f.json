@@ -1,0 +1,38 @@
+{
+  "hook": "WILL WE MAKE IT? Will we make it in life?",
+  "transcript": "Will we make it in life? Yes. How are you so sure? Because we'll keep trying. And if we don't make it? There's no way we don't. And if we end up in the streets? Then I'll build us the cutest tent on the street. My Shakespeare man.",
+  "on_screen_text": [
+    "WILL WE MAKE IT?",
+    "we",
+    "life?",
+    "How",
+    "sure?",
+    "trying.",
+    "And",
+    "make",
+    "we",
+    "the",
+    "Then",
+    "cutest",
+    "street.",
+    "boredinary life.",
+    "Shakespeare",
+    "turn boredom into excitement at boredinary.com",
+    "Follow for more episodes"
+  ],
+  "structure": [
+    "existential relationship question",
+    "instant reassuring answer",
+    "escalating hypothetical scenarios",
+    "romantic comforting resolution",
+    "closing end card"
+  ],
+  "sentence_pattern": "short alternating questions and answers",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "tender, comforting, intimate",
+  "pacing_cues": [
+    "calm steady cadence",
+    "gentle pauses between lines"
+  ],
+  "signoff": "Follow for more episodes"
+}

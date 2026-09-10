@@ -13,9 +13,11 @@ Bulk-shaped, unlike the old version:
     a re-route updates the existing row instead of duplicating it.
 """
 
+import sys
+
 from sqlalchemy import select
 
-from src.db.models import Post, World
+from src.db.models import Post, World, WorldPost
 from src.db.session import SessionLocal
 from src.services.routing import apply_ai_romance_split, normalized_world_matrix, persist_routing_batch, route_posts_batch
 
@@ -28,7 +30,10 @@ ROMANCE_SLUG = "romance"
 AI_ROMANCE_SLUG = "ai-romance-subworld"
 
 
-def run_routing(db) -> None:
+def run_routing(db, only_new: bool = False) -> None:
+    """only_new skips posts that already have a world_posts row — a re-route is
+    still the default (a post can legitimately change worlds), but after a crawl
+    that only added posts, embedding the whole corpus again buys nothing."""
     all_worlds = db.execute(select(World).order_by(World.slug)).scalars().all()  # load once, not per-post
     by_slug = {w.slug: w for w in all_worlds}
     romance_world = by_slug.get(ROMANCE_SLUG)
@@ -42,6 +47,8 @@ def run_routing(db) -> None:
 
     while True:
         stmt = select(Post).order_by(Post.id).limit(BATCH_SIZE)
+        if only_new:
+            stmt = stmt.where(~select(WorldPost.post_id).where(WorldPost.post_id == Post.id).exists())
         if last_id is not None:
             stmt = stmt.where(Post.id > last_id)
 
@@ -68,6 +75,6 @@ def run_routing(db) -> None:
 if __name__ == "__main__":
     db = SessionLocal()
     try:
-        run_routing(db)
+        run_routing(db, only_new="new" in sys.argv[1:])
     finally:
         db.close()

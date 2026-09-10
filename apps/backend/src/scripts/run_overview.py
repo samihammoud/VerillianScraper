@@ -35,6 +35,11 @@ def run_overview(world_slug: str) -> None:
         print(f"  wrote {len(stats)} ranked terms")
         _print_top(stats, "product")
         _print_top(stats, "format")
+        # Phase 15 — the discount slice: same ranking over the product instances the
+        # creator actually framed as a deal, and the formats of the posts they came from.
+        _print_top(stats, "discount_product", n=15)
+        _print_top(stats, "discount_format", n=15)
+        _print_top(stats, "discount_format_trait", n=15)
     finally:
         db.close()
 

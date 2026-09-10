@@ -1,0 +1,26 @@
+{
+  "hook": "FOOD DANCE",
+  "transcript": "Mmm What was that? The crepe is so good. You're so cute.",
+  "on_screen_text": [
+    "FOOD DANCE",
+    "What was that?",
+    "The crepe is so good.",
+    "boredinary life.",
+    "New episode when something interesting happens",
+    "You're so cute."
+  ],
+  "structure": [
+    "title card display",
+    "silent reaction dance",
+    "inquiry and explanation",
+    "affectionate closing remark"
+  ],
+  "sentence_pattern": "short casual conversational phrases",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "sweet, playful, affectionate",
+  "pacing_cues": [
+    "gentle pause before dialogue",
+    "brief back and forth"
+  ],
+  "signoff": "You're so cute."
+}

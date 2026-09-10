@@ -1,0 +1,37 @@
+{
+  "hook": "WHY ARE YOU NONCHALANT? Why are you so nonchalant?",
+  "transcript": "Why are you so nonchalant? I'm not. You always try to look so cool. I am cool. No, you try to look cool. There are times you hold back from being goofy just so you look cool. You're making shit up, Claire. Okay, then do a Donald Duck voice. What the hell, Claire? Are you too cool for Donald Duck? Give me something else. Okay, get up and twerk. No way. You're so boring.",
+  "on_screen_text": [
+    "WHY ARE YOU NONCHALANT?",
+    "Why are you so nonchalant?",
+    "I'm not.",
+    "You always try to look so cool.",
+    "I am cool.",
+    "No, you try to look cool.",
+    "There are times you hold back from being goofy just so you look cool.",
+    "You're making shit up, Claire.",
+    "Okay, then do a Donald Duck voice.",
+    "What the hell, Claire?",
+    "Are you too cool for Donald Duck?",
+    "Give me something else.",
+    "Okay, get up and twerk.",
+    "No way.",
+    "boredinary life.",
+    "Follow for more episodes",
+    "You're so boring."
+  ],
+  "structure": [
+    "playful accusation on couch",
+    "denial and banter escalation",
+    "testing character with dares",
+    "rejection and walking away"
+  ],
+  "sentence_pattern": "short snappy conversational banter exchanges",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "playful, deadpan, teasing",
+  "pacing_cues": [
+    "quick back-and-forth cadence",
+    "deadpan pauses between lines"
+  ],
+  "signoff": "Follow for more episodes"
+}

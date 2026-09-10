@@ -1,0 +1,24 @@
+{
+  "hook": "SEPARATION ANXIETY\nI have a meeting Claire, you need to leave the room.",
+  "transcript": "I have a meeting Claire, you need to leave the room. Okay, I'll be silent. Claire, my camera will be on. Ugh, you're so annoying. You're a different breed. You love this just as much as I do.",
+  "on_screen_text": [
+    "SEPARATION ANXIETY",
+    "boredinary life.",
+    "Follow for more episodes"
+  ],
+  "structure": [
+    "initial request to leave",
+    "compromise attempt rejected",
+    "reluctant repositioning",
+    "affectionate realization"
+  ],
+  "sentence_pattern": "short conversational back and forth",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "cozy, playful, affectionate",
+  "pacing_cues": [
+    "short dialogue beats",
+    "brief musical pause between lines",
+    "soft concluding punchline"
+  ],
+  "signoff": "Follow for more episodes"
+}

@@ -1,0 +1,47 @@
+{
+  "hook": "YOU MISSED THE EXIT Kevin slow down, it's this exit.",
+  "transcript": "Kevin slow down, it's this exit. No, it's not. Kevin, the map literally says this exit. Claire, I know what I'm doing. Can you check the next exit? No.",
+  "on_screen_text": [
+    "YOU MISSED THE EXIT",
+    "boredinary",
+    "Kevin",
+    "slow",
+    "down,",
+    "it's",
+    "this",
+    "exit.",
+    "No,",
+    "not.",
+    "the",
+    "map",
+    "literally",
+    "says",
+    "Claire,",
+    "I",
+    "know",
+    "what",
+    "I'm",
+    "doing.",
+    "Can",
+    "you",
+    "check",
+    "next",
+    "exit?",
+    "boredinary life.",
+    "New episode when something interesting happens...",
+    "No."
+  ],
+  "structure": [
+    "disagreement over missed road exit",
+    "stubborn dismissal of map directions",
+    "hesitant request and petty refusal"
+  ],
+  "sentence_pattern": "short blunt back and forth sentences",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "deadpan, petty, comedic",
+  "pacing_cues": [
+    "steady pacing throughout exchange",
+    "dramatic pause before final ask"
+  ],
+  "signoff": "none"
+}

@@ -1,0 +1,33 @@
+{
+  "hook": "ARE YOU AWAKE?",
+  "transcript": "Are you awake? Try not to be. Sarah on Love Island says her boyfriend would die for her. Would you die for me, Kevin? I'm living for you, Claire.",
+  "on_screen_text": [
+    "ARE YOU AWAKE?",
+    "awake?",
+    "be.",
+    "Love",
+    "boyfriend",
+    "her.",
+    "die",
+    "Kevin?",
+    "for",
+    "boredinary life.",
+    "New episode when something interesting happens..."
+  ],
+  "structure": [
+    "opening late night question",
+    "reluctant sleepy response",
+    "pop culture comparison setup",
+    "romantic loyalty test",
+    "sweet resolving comeback",
+    "closing title card"
+  ],
+  "sentence_pattern": "short conversational lines, brief questions and answers",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "deadpan, tenderly humorous",
+  "pacing_cues": [
+    "gentle slow pauses between lines",
+    "silent beat before loving reply"
+  ],
+  "signoff": "New episode when something interesting happens..."
+}

@@ -37,59 +37,45 @@ const bright = new THREE.Color("#ffffff");
 // Posts read as secondary evidence, not the headline: small and muted by
 // default so the world basins carry the eye, with a single post lifting to
 // full size/brightness under the cursor to stay findable on hover.
-function PostField({ posts, targets, colorByWorldId, hoveredWorldId, onHoverPost }) {
+function PostField({ posts, targets, colorByWorldId, hoveredWorldId }) {
   const meshRef = useRef();
   const startRef = useRef(null);
-  const hoverIndexRef = useRef(-1);
   const raw = useMemo(() => posts.map((p) => new THREE.Vector3(p.raw.x, p.raw.y, p.raw.z)), [posts]);
   const target = useMemo(() => posts.map((p) => new THREE.Vector3(targets[p.id].x, targets[p.id].y, targets[p.id].z)), [posts, targets]);
 
   useEffect(() => {
     startRef.current = performance.now();
-  }, [posts, colorByWorldId]);
+  }, [posts, colorByWorldId, hoveredWorldId]);
 
+  // ponytail: writes instance data only while the converge tween is running (or
+  // right after a hover change re-arms it), then goes idle. The old loop rewrote
+  // every matrix + color on every frame forever, which is what melted the render
+  // rate. Upgrade path: move the tween into a shader if it ever needs to be live.
   useFrame(() => {
     const mesh = meshRef.current;
     if (!mesh || startRef.current === null) return;
     const elapsed = performance.now() - startRef.current;
     const t = Math.min(1, elapsed / CONVERGE_MS);
     const eased = 1 - Math.pow(1 - t, 3);
-    const hovered = hoverIndexRef.current;
 
     posts.forEach((p, i) => {
       dummy.position.lerpVectors(raw[i], target[i], eased);
       const dimmed = hoveredWorldId && hoveredWorldId !== p.world_id;
-      const isHovered = i === hovered;
-      const s = isHovered ? 2 : dimmed ? 0.45 : 0.75;
-      dummy.scale.setScalar(s * 0.08);
+      dummy.scale.setScalar((dimmed ? 0.45 : 0.75) * 0.08);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
 
       muted.set(colorByWorldId[p.world_id]);
-      if (isHovered) muted.lerp(bright, 0.55);
-      else if (dimmed) muted.lerp(bright, 0.6);
-      else muted.lerp(bright, 0.25);
+      muted.lerp(bright, dimmed ? 0.6 : 0.25);
       mesh.setColorAt(i, muted);
     });
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    if (t >= 1) startRef.current = null; // settled — stop touching buffers
   });
 
   return (
-    <instancedMesh
-      ref={meshRef}
-      args={[null, null, posts.length]}
-      onPointerMove={(e) => {
-        e.stopPropagation();
-        if (e.instanceId == null) return;
-        hoverIndexRef.current = e.instanceId;
-        onHoverPost(posts[e.instanceId], e.clientX, e.clientY);
-      }}
-      onPointerOut={() => {
-        hoverIndexRef.current = -1;
-        onHoverPost(null);
-      }}
-    >
+    <instancedMesh ref={meshRef} args={[null, null, posts.length]} raycast={() => null}>
       <sphereGeometry args={[1, 12, 12]} />
       <meshStandardMaterial roughness={0.5} metalness={0.05} transparent opacity={0.6} />
     </instancedMesh>
@@ -128,8 +114,10 @@ function WorldBasin({ world, anchor, color: hex, count, active, dimmed, onHover 
   );
 }
 
+const MAX_STREAMLINES = 120; // ponytail: one <Line> = one mesh; uncapped this was thousands of draw calls
+
 function Streamlines({ posts, targets, color: hex }) {
-  return posts.map((p) => (
+  return posts.slice(0, MAX_STREAMLINES).map((p) => (
     <Line
       key={p.id}
       points={[
@@ -153,7 +141,6 @@ function AutoRotate({ controlsRef, active }) {
 }
 
 export default function Scene({ worlds, posts, colorByWorldId, hoveredWorldId, onHoverWorld }) {
-  const [tip, setTip] = useState(null);
   const controlsRef = useRef();
   const [autoRotate, setAutoRotate] = useState(true);
 
@@ -242,27 +229,7 @@ export default function Scene({ worlds, posts, colorByWorldId, hoveredWorldId, o
 
         {hoveredWorldId && <Streamlines posts={hoveredPosts} targets={targets} color={colorByWorldId[hoveredWorldId]} />}
 
-        <PostField
-          posts={postsWithRaw}
-          targets={targets}
-          colorByWorldId={colorByWorldId}
-          hoveredWorldId={hoveredWorldId}
-          onHoverPost={(post, x, y) => {
-            if (!post) {
-              setTip(null);
-              onHoverWorld(null);
-              return;
-            }
-            onHoverWorld(post.world_id);
-            setTip({
-              x,
-              y,
-              worldName: worlds.find((w) => w.id === post.world_id)?.name ?? "unknown",
-              color: colorByWorldId[post.world_id],
-              caption: post.caption,
-            });
-          }}
-        />
+        <PostField posts={postsWithRaw} targets={targets} colorByWorldId={colorByWorldId} hoveredWorldId={hoveredWorldId} />
 
         <OrbitControls ref={controlsRef} autoRotate={autoRotate} autoRotateSpeed={0.6} enablePan={false} minDistance={5} maxDistance={22} makeDefault />
         <AutoRotate controlsRef={controlsRef} active={autoRotate} />
@@ -276,28 +243,6 @@ export default function Scene({ worlds, posts, colorByWorldId, hoveredWorldId, o
         3D t-SNE, pulled toward basin by routing confidence &middot; position ≠ literal axis
       </div>
 
-      {tip && (
-        <div
-          className="mono"
-          style={{
-            position: "fixed",
-            left: tip.x,
-            top: tip.y,
-            transform: "translate(16px, 16px)",
-            maxWidth: 260,
-            background: "var(--panel)",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            padding: "8px 10px",
-            fontSize: 11,
-            pointerEvents: "none",
-            boxShadow: "0 6px 16px rgba(20, 23, 26, 0.08)",
-          }}
-        >
-          <div style={{ color: tip.color, marginBottom: 4 }}>{tip.worldName}</div>
-          <div style={{ color: "var(--text-muted)", fontFamily: "Space Grotesk, sans-serif" }}>{tip.caption || "(no caption)"}</div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,0 +1,39 @@
+{
+  "hook": "DO YOU MISS ME? Do you miss me?",
+  "transcript": "Do you miss me? I'm with you everyday, Claire. You can still miss me. I miss you when you go to work. I miss you, too. I'm serious, Kevin. I'm always thinking about you, Claire. I can't miss you.",
+  "on_screen_text": [
+    "DO YOU MISS ME?",
+    "you",
+    "me?",
+    "everyday,",
+    "You",
+    "me.",
+    "when",
+    "work.",
+    "I",
+    "too.",
+    "serious,",
+    "thinking",
+    "Claire.",
+    "boredinary.com",
+    "can't",
+    "think you know your partner? find out.",
+    "boredinary.com",
+    "Follow for more episodes"
+  ],
+  "structure": [
+    "intimate question posed",
+    "literal deflective response",
+    "emotional clarification offered",
+    "reassuring romantic conclusion",
+    "end screen call to action"
+  ],
+  "sentence_pattern": "short direct conversational lines",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "intimate, quiet, melancholic",
+  "pacing_cues": [
+    "measured pauses between turns",
+    "slow continuous shot without cuts"
+  ],
+  "signoff": "Follow for more episodes"
+}

@@ -1,0 +1,50 @@
+{
+  "hook": "FLIRTY EYES",
+  "transcript": "Hey. Excuse me. Yeah? I think my boyfriend thinks you're attractive. You should talk to him. Claire, what are you doing? I'm sorry. I'm sorry. She's just joking.",
+  "on_screen_text": [
+    "FLIRTY EYES",
+    "Hey",
+    "excuse",
+    "me",
+    "Yeah?",
+    "I",
+    "think",
+    "my",
+    "boyfriend",
+    "thinks",
+    "you're",
+    "attractive",
+    "You",
+    "should",
+    "talk",
+    "to",
+    "him",
+    "Claire,",
+    "what",
+    "are",
+    "you",
+    "doing?",
+    "I'm",
+    "sorry",
+    "boredinary life.",
+    "She's",
+    "New episode when something interesting happens...",
+    "just",
+    "joking"
+  ],
+  "structure": [
+    "silent setup in cafe line",
+    "provocative introduction to stranger",
+    "partner panics in background",
+    "awkward apology and exit"
+  ],
+  "sentence_pattern": "short casual dialogue exchanges",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "playful, awkward, humorous",
+  "pacing_cues": [
+    "initial silent beat",
+    "rapid awkward dialogue delivery",
+    "sudden comedic cutoff"
+  ],
+  "signoff": "none"
+}

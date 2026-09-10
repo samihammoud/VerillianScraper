@@ -1,0 +1,39 @@
+{
+  "hook": "WERE WE FIGHTING",
+  "transcript": "Were we fighting? No. You were doing the voice. You were being annoying. Are we okay? No. Then I'm sorry.",
+  "on_screen_text": [
+    "WERE WE FIGHTING",
+    "Were",
+    "we",
+    "fighting?",
+    "No.",
+    "You",
+    "were",
+    "doing",
+    "the",
+    "voice.",
+    "being",
+    "annoying.",
+    "Are",
+    "okay?",
+    "Then",
+    "I'm",
+    "sorry.",
+    "boredinary life.",
+    "New episode when something interesting happens"
+  ],
+  "structure": [
+    "opening clarification question",
+    "terse denial and accusation",
+    "counter accusation and check in",
+    "apology and silent reconciliation"
+  ],
+  "sentence_pattern": "short clipped back and forth lines",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "deadpan, mundane, gently domestic",
+  "pacing_cues": [
+    "rapid rhythmic dialogue exchanges",
+    "lingering silent beat at conclusion"
+  ],
+  "signoff": "none"
+}

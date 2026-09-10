@@ -1,0 +1,41 @@
+{
+  "hook": "TRUTH OR DARE",
+  "transcript": "Truth or dare? Truth. What's something girly you do that you're embarrassed of? I love it when you do your whole skin care thing on me. Aww, that's so cute. I didn't know you had estrogen in you. You'd be surprised by how many girly things I've adopted from you.",
+  "on_screen_text": [
+    "TRUTH OR DARE",
+    "Truth.",
+    "What's",
+    "you",
+    "embarrassed",
+    "of.",
+    "I",
+    "whole",
+    "me.",
+    "Aww,",
+    "cute.",
+    "estrogen",
+    "You'd",
+    "many",
+    "boredinary.com",
+    "adopted",
+    "think you know your partner? find out.",
+    "boredinary.com",
+    "Follow for more episodes"
+  ],
+  "structure": [
+    "game premise setup",
+    "intimate prompt question",
+    "vulnerable confession",
+    "playful teasing reaction",
+    "affectionate final remark",
+    "call to action end card"
+  ],
+  "sentence_pattern": "casual conversational back and forth",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "playful, affectionate, relaxed",
+  "pacing_cues": [
+    "slow steady rhythm",
+    "relaxed conversational pauses"
+  ],
+  "signoff": "Follow for more episodes"
+}

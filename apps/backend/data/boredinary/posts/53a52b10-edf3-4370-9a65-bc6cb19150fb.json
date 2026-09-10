@@ -1,0 +1,25 @@
+{
+  "hook": "WHEN WILL YOU MARRY ME? When will you marry me?",
+  "transcript": "When will you marry me? I don't know. Everyone is getting married. Why aren't you marrying me? I'm waiting for the right moment. What does the right moment mean? I don't know, it's a big decision. We need to get it right. That's bullshit, Kevin. You can never get it right. You have to pick your person and you make it right. Am I not the person you want to make it right with? You are. Okay then. I'm a size six, and I like emerald shaped diamonds.",
+  "on_screen_text": [
+    "WHEN WILL YOU MARRY ME?",
+    "boredinary life.",
+    "Follow for more episodes"
+  ],
+  "structure": [
+    "direct confrontation hook",
+    "hesitant evasion",
+    "philosophical rebuttal",
+    "pointed personal question",
+    "humorous demand resolution"
+  ],
+  "sentence_pattern": "conversational questions and short answers",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "deadpan, playful, blunt",
+  "pacing_cues": [
+    "steady conversational timing",
+    "pregnant pause before admission",
+    "abrupt pivot to punchline"
+  ],
+  "signoff": "Follow for more episodes"
+}

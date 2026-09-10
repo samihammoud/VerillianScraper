@@ -1,4 +1,4 @@
-.PHONY: install build test lint clean reset-data reseed-worlds seed-world enrich route crawl redescribe analyze overview overview-deep ui serve dev
+.PHONY: install build test lint clean reset-data reseed-worlds seed-world enrich route crawl backfill-videos redescribe analyze overview overview-deep ui serve dev
 
 BACKEND := apps/backend
 # Relative to $(BACKEND) on purpose: every recipe using it cd's there first.
@@ -54,6 +54,11 @@ enrich:
 route:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_routing
 
+# same, but skips posts that already have a world_posts row — after a crawl that
+# only added posts, re-embedding the whole corpus buys nothing
+route-new:
+	cd $(BACKEND) && $(PY) -m src.scripts.run_routing new
+
 # stage 4 — peak analysis for one account: pure compute over Postgres, no external API
 analyze:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_analyze "$(HANDLE)"
@@ -81,6 +86,12 @@ overview-deep: overview
 # before the first run for a new world.
 crawl:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_crawl $(WORLD) $(ROUNDS)
+
+# Re-fetch videos for posts whose download failed at ingest, then describe them.
+# Scoped by discovered_by_world (not routing — these posts can't have routed).
+# Refuses to run while a crawl holds the advisory lock.
+backfill-videos:
+	cd $(BACKEND) && $(PY) -m src.scripts.backfill_videos $(WORLD)
 
 # Re-run the VLM over one world after its response schema changed. Re-fetches
 # each post's video (they're deleted on successful description, and the play

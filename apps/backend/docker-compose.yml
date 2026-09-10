@@ -9,6 +9,10 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # default max_connections=100 is under the backend pool's ceiling
+    # (pool_size=90 + max_overflow=30, see src/db/session.py) once
+    # INGEST_WORKERS holds one connection per in-flight account ingest.
+    command: postgres -c max_connections=200
 
 volumes:
   postgres_data:

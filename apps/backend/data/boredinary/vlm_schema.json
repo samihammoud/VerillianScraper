@@ -1,0 +1,76 @@
+{
+  "type": "object",
+  "required": [
+    "hook",
+    "transcript",
+    "on_screen_text",
+    "structure",
+    "sentence_pattern",
+    "dialogue_mode",
+    "tone",
+    "pacing_cues",
+    "signoff"
+  ],
+  "propertyOrdering": [
+    "hook",
+    "transcript",
+    "on_screen_text",
+    "structure",
+    "sentence_pattern",
+    "dialogue_mode",
+    "tone",
+    "pacing_cues",
+    "signoff"
+  ],
+  "properties": {
+    "hook": {
+      "type": "string",
+      "nullable": true,
+      "description": "Verbatim spoken line and/or on-screen text in the first 3 seconds. Copy exactly. null if there is neither speech nor text overlay in the first 3 seconds."
+    },
+    "transcript": {
+      "type": "string",
+      "nullable": true,
+      "description": "Verbatim spoken words in order, exactly as said. Do not summarize, correct grammar, or translate. null if no speech."
+    },
+    "on_screen_text": {
+      "type": "array",
+      "description": "Every distinct text overlay, verbatim, in the order it appears. Empty array if none.",
+      "items": { "type": "string" }
+    },
+    "structure": {
+      "type": "array",
+      "description": "The video's beats in order, one entry per beat, 3-6 words each, lowercase, e.g. [\"hook question\", \"personal anecdote\", \"reveal\", \"one-line takeaway\"]. Describe the shape, not the content.",
+      "items": { "type": "string" }
+    },
+    "sentence_pattern": {
+      "type": "string",
+      "description": "3-6 lowercase words on rhythm, e.g. \"short declarative sentences, one clause each\" or \"long run-on sentences, trailing off\"."
+    },
+    "dialogue_mode": {
+      "type": "string",
+      "description": "How the words are delivered. Pick \"other\" only if none of the listed values fit.",
+      "enum": [
+        "monologue_to_camera",
+        "voiceover_over_b_roll",
+        "text_on_screen_only",
+        "pov_addressed_to_one_person",
+        "back_and_forth_exchange",
+        "other"
+      ]
+    },
+    "tone": {
+      "type": "string",
+      "description": "2-4 lowercase words, e.g. \"earnest, softly cautionary\"."
+    },
+    "pacing_cues": {
+      "type": "array",
+      "description": "Qualitative pacing observations only — never measured cut timing. Lowercase phrases, e.g. \"long pause before punchline\", \"rapid-fire list, no pauses\". Empty array if nothing notable.",
+      "items": { "type": "string" }
+    },
+    "signoff": {
+      "type": "string",
+      "description": "Verbatim closing line or CTA. The literal string \"none\" if there is no closing line."
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "hook": "DO YOU GET JEALOUS?",
+  "transcript": "Do you get jealous? No. So you don't love me? I do. Then why don't you get jealous if someone flirts with me? What's the point? I trust you to be loyal to me, and if you're not, then I leave. Jealousy doesn't add anything. You always try to sound so wise.",
+  "on_screen_text": [
+    "DO YOU GET JEALOUS?",
+    "boredinary",
+    "boredinary life.",
+    "New episode when something interesting happens..."
+  ],
+  "structure": [
+    "opening relationship question",
+    "rapid back and forth challenge",
+    "calm pragmatic explanation",
+    "humorous concluding reaction",
+    "outro title card"
+  ],
+  "sentence_pattern": "short direct questions and replies",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "deadpan, philosophical, mildly amusing",
+  "pacing_cues": [
+    "rapid dialogue exchanges",
+    "steady measured monologue explanation",
+    "quick playful punchline finish"
+  ],
+  "signoff": "New episode when something interesting happens..."
+}

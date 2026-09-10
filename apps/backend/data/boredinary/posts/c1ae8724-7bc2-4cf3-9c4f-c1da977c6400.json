@@ -1,0 +1,38 @@
+{
+  "hook": "LOVE OR RESPECT? Do you want me to love you or respect you?",
+  "transcript": "Do you want me to love you or respect you? Respect. Why? Because love is something you feel. Respect is something you choose. You don't want my love? Of course I do. Love is what we feel on the good days. Respect is what keeps us together on the bad ones.",
+  "on_screen_text": [
+    "LOVE OR RESPECT?",
+    "want",
+    "respect",
+    "Respect.",
+    "Why?",
+    "something",
+    "feel.",
+    "choose.",
+    "want",
+    "I",
+    "feel",
+    "days.",
+    "boredinary life.",
+    "Follow for more episodes",
+    "keeps",
+    "ones.",
+    "boredinary.com"
+  ],
+  "structure": [
+    "opening either-or question",
+    "immediate concise answer",
+    "philosophical explanation of choice",
+    "clarifying follow-up question",
+    "concluding contrast statement"
+  ],
+  "sentence_pattern": "short questions and balanced statements",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "intimate, reflective, calm",
+  "pacing_cues": [
+    "steady conversational pauses",
+    "measured calm delivery"
+  ],
+  "signoff": "Follow for more episodes"
+}

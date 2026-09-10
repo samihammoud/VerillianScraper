@@ -1,0 +1,42 @@
+{
+  "hook": "SURPRISE STEAK Why are you home?",
+  "transcript": "Why are you home? I finished work early. I was cooking you a surprise steak, and then I was going to find us a perfect movie for the steak. I adore you, Claire. I'll be surprised when I'm back from the gym.",
+  "on_screen_text": [
+    "SURPRISE STEAK",
+    "Why",
+    "are you home?",
+    "I",
+    "finished work",
+    "early.",
+    "I",
+    "was cooking you a",
+    "surprise",
+    "steak,",
+    "and then",
+    "I was going to find us a",
+    "perfect",
+    "movie for the",
+    "steak.",
+    "I",
+    "adore",
+    "you, Claire.",
+    "I'll be surprised when I'm",
+    "back",
+    "from the gym.",
+    "boredinary life.",
+    "New episode when something interesting happens..."
+  ],
+  "structure": [
+    "unexpected arrival interrupts surprise",
+    "explanation of ruined plans",
+    "dismissive response and exit"
+  ],
+  "sentence_pattern": "short casual conversational exchanges",
+  "dialogue_mode": "back_and_forth_exchange",
+  "tone": "deadpan, mildly humorous",
+  "pacing_cues": [
+    "steady conversational rhythm",
+    "pause before final reply"
+  ],
+  "signoff": "none"
+}

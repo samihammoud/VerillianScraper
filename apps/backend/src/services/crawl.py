@@ -41,7 +41,16 @@ POSTS_PER_ACCOUNT = 40  # below ~30 the peak baseline degrades to its top-10% fa
 SEARCH_PAGES = 3
 QUERIES_PER_ROUND = 10  # matches query_gen.QUERIES_PER_ROUND; also the round-0 seed count
 ACCOUNTS_PER_QUERY = 20  # was 5 (a labeled testing cap) — how many handles one query contributes
-INGEST_WORKERS = 20  # concurrent account ingests, now round-wide rather than per-query
+INGEST_WORKERS = 20  # concurrent account ingests, round-wide rather than per-query.
+# Measured ceiling, not a guess: video bytes cross the network twice (CDN -> here
+# -> GCS) and the link tops out near 7.5 MB/s each way, which 20 workers already
+# saturate. 80 workers (tried 2026-09-08) moved throughput 1.60 -> 1.34
+# accounts/min while the video fetch failure rate went 1.6% -> ~15% — read/write
+# timeouts, truncated response bodies, local DNS failures, and CDN 403s. Past
+# saturation the extra concurrency only splits the same bandwidth into streams
+# too slow to beat their own timeouts, so the bytes get discarded mid-transfer.
+# The knee may be below 20; that's untested. Raising this needs a bandwidth
+# measurement first, not a bigger number.
 
 
 def search_handles(keyword: str) -> list[str]:
