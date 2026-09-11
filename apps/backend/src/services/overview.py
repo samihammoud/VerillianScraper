@@ -403,6 +403,19 @@ def _setting_text(vlm_json: dict | None) -> str | None:
     return setting.strip() if setting else None
 
 
+def _summary_text(vlm_json: dict | None) -> str | None:
+    """Niche space for the schemas that have no `premise`. `summary` is a
+    sentence describing what happens in the video, which is what a niche is —
+    `topics[]` is a bag of short noun phrases, i.e. a vocabulary, and no amount
+    of merging makes "storage unit auction" say "buys a unit sight-unseen and
+    appraises the contents". Never the transcript, for _premise_text's reason:
+    wording, not situation."""
+    if not vlm_json:
+        return None
+    summary = vlm_json.get("summary")
+    return summary.strip() if summary else None
+
+
 def _hook_text(vlm_json: dict | None) -> str | None:
     if not vlm_json:
         return None
@@ -599,6 +612,16 @@ def _setting_clusters(db, world: World, world_median: float) -> tuple[list[dict]
     return _text_field_clusters(db, world, world_median, "setting_cluster", _setting_text)
 
 
+def _summary_clusters(db, world: World, world_median: float) -> tuple[list[dict], list[dict]]:
+    """Phase 17 — premise-style niche finding for the product schemas, which
+    have no `premise` field. Same mechanism and the same thresholds as premise
+    (8 posts/5 accounts, 0.97 transcript dedupe); only the source field differs,
+    so it needs no schema change and no re-describe. Runs for every world —
+    `summary` is required everywhere — and on a romance world it is simply a
+    coarser sibling of premise_cluster."""
+    return _text_field_clusters(db, world, world_median, "summary_cluster", _summary_text)
+
+
 def _hook_clusters(db, world: World, world_median: float) -> tuple[list[dict], list[dict]]:
     """Phase 9 layer 3 — hook space. Embeds `hook` verbatim (the doc is explicit
     that hook phrasings transfer across situations, so this is deliberately a
@@ -627,28 +650,100 @@ def _advice_clusters(db, world: World, world_median: float) -> tuple[list[dict],
 
 
 def _apply_term_merges(db, world: World) -> None:
-    """Phase 16: fold the LLM's merge decisions into canon_term, after the
-    embedding clustering has set it and before anything aggregates off it, so
-    merged groups get combined support for free. No world/facet check here —
-    scope is whatever rows are in topology.term_merges. Applied inside rollup()
-    because post_terms is rebuilt from vlm_json on every run; an UPDATE
-    anywhere else silently vanishes."""
+    """Phase 16 step 3a: fold the LLM's merge decisions into canon_term, after
+    the embedding clustering has set it and before anything aggregates off it,
+    so merged groups get combined support for free. No world/facet check here —
+    scope is whatever rows are in topology.term_overrides. Applied inside
+    rollup() because post_terms is rebuilt from vlm_json on every run; an
+    UPDATE anywhere else silently vanishes."""
     n = db.execute(
         text("""
             UPDATE topology.post_terms pt
-               SET canon_term = m.canon_term
-              FROM topology.term_merges m
+               SET canon_term = m.target_term
+              FROM topology.term_overrides m
              WHERE pt.world_id = :world_id
                AND m.world_id  = pt.world_id
                AND m.facet     = pt.facet
                AND m.norm_term = pt.norm_term
-               AND pt.canon_term IS DISTINCT FROM m.canon_term
+               AND m.action    = 'merge'
+               AND pt.canon_term IS DISTINCT FROM m.target_term
         """),
         {"world_id": world.id},
     ).rowcount
     db.commit()
     if n:
-        print(f"  term_merges: {n} post_terms rows remapped")
+        print(f"  term_overrides: {n} post_terms rows remapped by merge")
+
+
+def _resolve_override_terms(db, world: World) -> dict[tuple[str, str], tuple[str, str | None]]:
+    """Phase 16 step 3b: map each child_of/drop override back to the canon_term
+    its norm_terms actually landed on this run.
+
+    Overrides are keyed on norm_term (drift-proof), but these two actions apply
+    to a computed stats row, so the join has to happen after clustering. A
+    term's norm_terms can land on more than one canon_term when re-clustering
+    moves one, and one canon_term can collect norm_terms carrying different
+    actions — both are reported rather than guessed at."""
+    rows = db.execute(
+        text("""
+            SELECT o.facet, pt.canon_term, o.action, o.target_term, count(*) AS n
+              FROM topology.term_overrides o
+              JOIN topology.post_terms pt
+                ON pt.world_id = o.world_id AND pt.facet = o.facet AND pt.norm_term = o.norm_term
+             WHERE o.world_id = :world_id AND o.action IN ('child_of', 'drop')
+             GROUP BY 1, 2, 3, 4
+        """),
+        {"world_id": world.id},
+    ).all()
+
+    by_key: dict[tuple[str, str], list] = {}
+    for facet, canon_term, action, target, n in rows:
+        by_key.setdefault((facet, canon_term), []).append((n, action, target))
+
+    resolved: dict[tuple[str, str], tuple[str, str | None]] = {}
+    for key, candidates in by_key.items():
+        actions = {action for _, action, _ in candidates}
+        if len(actions) > 1:
+            # ponytail: no tie-break here on purpose — silently dropping a ranked term
+            # on a minority vote is worse than leaving it ranked. Revisit if this fires.
+            print(f"  term_overrides: conflicting actions {sorted(actions)} on {key[1]!r} — skipped")
+            continue
+        n, action, target = max(candidates)  # plurality when norm_terms split across clusters
+        if len(candidates) > 1:
+            print(f"  term_overrides: {key[1]!r} norm_terms split across clusters — applied {action} to the largest")
+        resolved[key] = (action, target)
+    return resolved
+
+
+def _apply_child_and_drop(db, world: World, stats: list[dict]) -> list[dict]:
+    """Phase 16 step 3b: nest child_of rows under their parent and remove
+    dropped ones. Child counts are NOT folded into the parent — the child keeps
+    its own support and lift, it just stops competing at the top level. A
+    dropped term's posts keep counting under their other terms."""
+    resolved = _resolve_override_terms(db, world)
+    if not resolved:
+        return stats
+
+    ranked = {(s["facet"], s["canon_term"]) for s in stats}
+    kept, n_child, n_drop = [], 0, 0
+    for s in stats:
+        action, target = resolved.get((s["facet"], s["canon_term"]), (None, None))
+        if action == "drop":
+            n_drop += 1
+            continue
+        if action == "child_of":
+            if (s["facet"], target) not in ranked:
+                # Parent fell below the support floor this run. Leaving parent_term set
+                # would hide the child entirely — /overview only returns parent_term IS
+                # NULL rows plus the children of the parents it returns.
+                print(f"  term_overrides: parent {target!r} not ranked — {s['canon_term']!r} stays top-level")
+            else:
+                s["parent_term"] = target
+                n_child += 1
+        kept.append(s)
+    if n_child or n_drop:
+        print(f"  term_overrides: {n_child} nested under a parent, {n_drop} dropped")
+    return kept
 
 
 def rollup(db, world_slug: str) -> list[dict]:
@@ -667,6 +762,7 @@ def rollup(db, world_slug: str) -> list[dict]:
     for label, cluster_fn in [
         ("premise_cluster", _premise_clusters),
         ("setting_cluster", _setting_clusters),
+        ("summary_cluster", _summary_clusters),
         ("hook_cluster", _hook_clusters),
         ("punchline_cluster", _punchline_clusters),
         ("advice_cluster", _advice_clusters),
@@ -683,6 +779,8 @@ def rollup(db, world_slug: str) -> list[dict]:
         db.execute(insert(PostTerm).values(discount_post_terms))
         db.commit()
     stats = stats + discount_stats
+
+    stats = _apply_child_and_drop(db, world, stats)
 
     if stats:
         median_lift = float(np.median([s["lift"] for s in stats]))
@@ -707,6 +805,12 @@ def rollup(db, world_slug: str) -> list[dict]:
     if len(deduped) != len(stats):
         print(f"  dropped {len(stats) - len(deduped)} duplicate (facet, canon_term) row(s) before write")
     stats = list(deduped.values())
+
+    # Every producer of a stats dict must agree on keys — a bulk insert takes its
+    # column list from the first row, so one dict missing parent_term would drop it
+    # for all of them.
+    for s in stats:
+        s.setdefault("parent_term", None)
 
     db.execute(delete(WorldTermStat).where(WorldTermStat.world_id == world.id))
     if stats:

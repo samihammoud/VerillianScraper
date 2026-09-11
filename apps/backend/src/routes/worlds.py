@@ -123,6 +123,11 @@ def world_overview(
         # 6/4. Shuffling account labels admits MORE terms than the real data at every
         # floor, so n_accounts is a concentration check, not evidence of convergence.
         stmt = stmt.where(WorldTermStat.n_posts >= min_posts, WorldTermStat.n_accounts >= min_accounts)
+        # Phase 16: child_of terms are characteristics of another term, not topics in
+        # their own right — they come back nested under their parent, never ranked
+        # alongside it. Same read-time floors apply to them as to parents.
+        child_stmt = stmt.where(WorldTermStat.parent_term.isnot(None))
+        stmt = stmt.where(WorldTermStat.parent_term.is_(None))
         if max_posts is not None:
             stmt = stmt.where(WorldTermStat.n_posts <= max_posts)
 
@@ -161,6 +166,10 @@ def world_overview(
         total = db.execute(select(func.count()).select_from(annotated.subquery())).scalar_one()
         term_rows = db.execute(annotated.limit(limit).offset(offset)).all()
 
+        children: dict[str, list[dict]] = {}
+        for c in db.execute(child_stmt.order_by(WorldTermStat.n_posts.desc())).scalars():
+            children.setdefault(c.parent_term, []).append(_term_row(slug, facet, c, None, median_n_posts))
+
         return {
             "coverage": {
                 "n_posts": n_posts,
@@ -176,24 +185,7 @@ def world_overview(
             "total": total,
             "offset": offset,
             "terms": [
-                {
-                    "key": term_key(slug, facet, t.canon_term),
-                    "canon_term": t.canon_term,
-                    "n_posts": t.n_posts,
-                    "n_accounts": t.n_accounts,
-                    "n_hero": t.n_hero,
-                    "view_ratio": t.view_ratio,
-                    "lift": t.lift,
-                    "volume_ratio": (t.n_posts / median_n_posts) if median_n_posts else 0.0,
-                    "account_view_ratio": t.account_view_ratio,
-                    "account_lift": t.account_lift,
-                    "variants": t.variants,
-                    "note": a.note if a else "",
-                    "favorite": bool(a and a.favorite),
-                    "reviewed": bool(a and a.reviewed),
-                    "hidden": bool(a and a.hidden),
-                    "sort_order": a.sort_order if a else 0,
-                }
+                {**_term_row(slug, facet, t, a, median_n_posts), "children": children.get(t.canon_term, [])}
                 for t, a in term_rows
             ],
         }
@@ -209,6 +201,29 @@ def world_accounts(slug: str) -> list[dict]:
         return account_patterns(db, world)
     finally:
         db.close()
+
+
+def _term_row(slug: str, facet: str, t, a, median_n_posts: float) -> dict:
+    """One term as the UI consumes it. Shared by the top-level ranking and the
+    nested children, so a sub-topic renders with the same fields as a parent."""
+    return {
+        "key": term_key(slug, facet, t.canon_term),
+        "canon_term": t.canon_term,
+        "n_posts": t.n_posts,
+        "n_accounts": t.n_accounts,
+        "n_hero": t.n_hero,
+        "view_ratio": t.view_ratio,
+        "lift": t.lift,
+        "volume_ratio": (t.n_posts / median_n_posts) if median_n_posts else 0.0,
+        "account_view_ratio": t.account_view_ratio,
+        "account_lift": t.account_lift,
+        "variants": t.variants,
+        "note": a.note if a else "",
+        "favorite": bool(a and a.favorite),
+        "reviewed": bool(a and a.reviewed),
+        "hidden": bool(a and a.hidden),
+        "sort_order": a.sort_order if a else 0,
+    }
 
 
 def term_key(slug: str, facet: str, canon_term: str) -> str:

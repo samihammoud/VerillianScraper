@@ -241,7 +241,24 @@ class WorldTermStat(Base):
     account_lift: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
     account_view_ratio: Mapped[float] = mapped_column(Float, nullable=False, default=1.0, server_default="1")
     variants: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    parent_term: Mapped[str | None] = mapped_column(Text, nullable=True)  # phase 16: child_of
     computed_at: Mapped[datetime.datetime] = mapped_column(default=datetime.datetime.utcnow)
+
+
+class TermOverride(Base):
+    """Phase 16: the LLM's per-term decision, re-applied inside every rollup().
+    Keyed on norm_term (a pure function of the string) rather than canon_term
+    (a cluster label that drifts as posts arrive). `keep` is stored as absence.
+    target_term is NULL only for action='drop'."""
+
+    __tablename__ = "term_overrides"
+    __table_args__ = {"schema": "topology"}
+
+    world_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("topology.worlds.id"), primary_key=True)
+    facet: Mapped[str] = mapped_column(Text, primary_key=True)
+    norm_term: Mapped[str] = mapped_column(Text, primary_key=True)
+    action: Mapped[str] = mapped_column(Text, nullable=False, server_default="merge")
+    target_term: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class TermEmbedding(Base):

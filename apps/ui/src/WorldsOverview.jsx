@@ -251,6 +251,14 @@ function TermPanel({ slug, facet, label, onSelectTerm }) {
   const [minAccounts, setMinAccounts] = useState(4);
   const [notes, setNotes] = useState({}); // local edits, keyed by term key
   const [openNote, setOpenNote] = useState(null);
+  // phase 16: which parents have their sub-topics expanded. A sub-topic is a
+  // characteristic of the parent (paint stripping under furniture flipping) —
+  // its counts are its own, deliberately not folded into the parent's.
+  const [expanded, setExpanded] = useState(() => new Set());
+  // sub-topics live on the parent row the server sent, so filtering to "has
+  // children" is a client-side filter of the loaded page, not a query param —
+  // LOAD ALL first if you want the whole world's parents.
+  const [subsOnly, setSubsOnly] = useState(false);
   const [favOnly, setFavOnly] = useState(false);
   const activeBand = SIZE_BANDS.find((b) => b.key === band) || SIZE_BANDS[0];
   // favorites_only filters server-side, so a starred term that has fallen below
@@ -270,6 +278,9 @@ function TermPanel({ slug, facet, label, onSelectTerm }) {
   // measurement — the small bands are leads to open, which is why every row
   // still links straight through to its posts.
   const refetch = refresh;
+  const rows = subsOnly ? terms.filter((t) => t.children?.length) : terms;
+  const withSubs = rows.filter((t) => t.children?.length);
+  const allExpanded = withSubs.length > 0 && withSubs.every((t) => expanded.has(t.key));
 
   // Sort order comes from the server (favorites first, then manual sort_order,
   // then the chosen metric) so a starred term can't fall out of the top TERM_LIMIT.
@@ -313,7 +324,7 @@ function TermPanel({ slug, facet, label, onSelectTerm }) {
           {label}
           <span className="mono" style={{ fontSize: 10, color: "var(--text-dim)", fontWeight: 400, marginLeft: 8 }}>
             {activeBand.key !== "all" && `${activeBand.label} posts · `}
-            {terms.length}
+            {rows.length}
             {total > terms.length ? ` / ${total}` : ""}
           </span>
         </span>
@@ -376,9 +387,29 @@ function TermPanel({ slug, facet, label, onSelectTerm }) {
             {n}+
           </span>
         ))}
+        <span style={{ letterSpacing: 1, marginLeft: 6 }}>SUBS</span>
+        <span
+          title="show only terms that have sub-topics (filters the loaded page)"
+          onClick={() => setSubsOnly(!subsOnly)}
+          style={{ cursor: "pointer", color: subsOnly ? "var(--accent)" : "var(--text-dim)", textDecoration: subsOnly ? "underline" : "none" }}
+        >
+          ONLY
+        </span>
+        <span
+          title={allExpanded ? "collapse all sub-topics" : "expand all sub-topics"}
+          onClick={() =>
+            setExpanded(allExpanded ? new Set() : new Set(withSubs.map((t) => t.key)))
+          }
+          style={{ cursor: "pointer", color: withSubs.length ? "var(--text-dim)" : "var(--grid)" }}
+        >
+          {allExpanded ? "▾ ALL" : "▸ ALL"}
+        </span>
       </div>
       <div style={{ overflowY: "auto", flex: 1 }}>
-        {terms.map((t, i) => {
+        {rows.map((t) => {
+          // index into the unfiltered list: reorder() rewrites sort_order for
+          // every row it's handed, so it must always see the full page.
+          const i = terms.indexOf(t);
           const editing = openNote === t.key;
           const primary = metric === "volume" ? t.volume_ratio : metric === "account" ? t.account_view_ratio : t.view_ratio;
           return (
@@ -396,6 +427,23 @@ function TermPanel({ slug, facet, label, onSelectTerm }) {
                 <span style={{ fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {t.canon_term}
                 </span>
+                {t.children?.length > 0 && (
+                  <span
+                    className="mono"
+                    title={`${t.children.length} sub-topic(s): ${t.children.map((c) => c.canon_term).join(", ")}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpanded((prev) => {
+                        const next = new Set(prev);
+                        next.has(t.key) ? next.delete(t.key) : next.add(t.key);
+                        return next;
+                      });
+                    }}
+                    style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0, cursor: "pointer" }}
+                  >
+                    {expanded.has(t.key) ? "▾" : "▸"}{t.children.length}
+                  </span>
+                )}
                 {/* per-account multiplier stays visible whatever the sort is — it's
                     the number that says the term travels across creators rather
                     than riding one account's outlier. */}
@@ -461,12 +509,41 @@ function TermPanel({ slug, facet, label, onSelectTerm }) {
                   </div>
                 )
               )}
+              {expanded.has(t.key) &&
+                t.children.map((c) => (
+                  <div
+                    key={c.key}
+                    title={`variants: ${c.variants.join(", ")}`}
+                    onClick={() => onSelectTerm({ facet, canon_term: c.canon_term, label })}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "5px 12px 5px 36px",
+                      cursor: "pointer",
+                      minWidth: 0,
+                      borderTop: "1px solid var(--grid)",
+                    }}
+                  >
+                    <span className="mono" style={{ fontSize: 11, color: "var(--accent)", flexShrink: 0 }}>
+                      {(metric === "volume" ? c.volume_ratio : metric === "account" ? c.account_view_ratio : c.view_ratio).toFixed(1)}x
+                    </span>
+                    <span style={{ fontSize: 12, flex: 1, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {c.canon_term}
+                    </span>
+                    <span className="mono" style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>
+                      {c.n_posts}p/{c.n_accounts}a
+                    </span>
+                  </div>
+                ))}
             </div>
           );
         })}
-        {!loading && !terms.length && (
+        {!loading && !rows.length && (
           <div className="mono" style={{ padding: 14, fontSize: 11, color: "var(--text-dim)" }}>
-            {favOnly
+            {subsOnly
+              ? "no terms with sub-topics on this page — LOAD ALL or sort by VOLUME"
+              : favOnly
               ? "nothing favorited yet — star a term to collect it here"
               : activeBand.key !== "all"
                 ? `no clusters in the ${activeBand.label} band`
@@ -799,6 +876,14 @@ const CATEGORIES = [
       { facet: "discount_format", label: "Formats Showcasing Them" },
       { facet: "discount_format_trait", label: "Format Traits" },
     ],
+  },
+  {
+    // Phase 17 — niche space. Sentence-level clusters over `summary`, the
+    // product-schema stand-in for romance's `premise`: a niche is a sentence
+    // ("buys a storage unit sight-unseen and appraises it"), not a noun phrase.
+    key: "niches",
+    label: "Niches",
+    panels: [{ facet: "summary_cluster", label: "Niches (summary clusters)", fullWidth: true }],
   },
   {
     key: "signals",
