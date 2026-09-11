@@ -279,3 +279,34 @@ class ClusterProfile(Base):
     highest_lift_register: Mapped[str | None] = mapped_column(Text, nullable=True)
     register_mismatch: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
     computed_at: Mapped[datetime.datetime] = mapped_column(default=datetime.datetime.utcnow)
+
+
+class Annotation(Base):
+    """UI annotations on things that are recomputed per request and so have no
+    stored identity of their own: account peak patterns (account_patterns.py)
+    and world term clusters (world_term_stats rows, rebuilt wholesale by
+    `make overview`). One table rather than two near-identical ones — the only
+    difference between them was the key type, so `key` is text and each caller
+    picks its own stable format:
+
+      pattern  ->  str(anchor_post_id)          # cluster's smallest member post
+      term     ->  f"{world_slug}:{facet}:{canon_term}"
+
+    ponytail: no FK, so a key whose underlying cluster splits or vanishes just
+    detaches (and a term renamed by re-clustering loses its note). Store the
+    full member set only if that turns out to bite.
+    """
+
+    __tablename__ = "annotations"
+    __table_args__ = {"schema": "topology"}
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    note: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    favorite: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
+    reviewed: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
+    hidden: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    updated_at: Mapped[datetime.datetime] = mapped_column(default=datetime.datetime.utcnow)
+
+
+ANNOTATION_FIELDS = ("note", "favorite", "reviewed", "hidden", "sort_order")

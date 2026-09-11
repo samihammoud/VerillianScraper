@@ -24,7 +24,12 @@ from src.services.linalg import l2_normalize
 from src.services.terms import CLUSTERED_FACETS, RAW_FACETS, extract_scrape_terms, extract_terms, normalize
 
 CLUSTER_THRESHOLD = 0.86  # tuned once in phase 2 by eyeballing merges against `variants`
-MIN_POSTS = 5
+MIN_POSTS = 3  # was 5. Three unrelated creators converging on a phrase is signal,
+# and the 5-post bar was discarding it: 'inconsistent texting' sat at 3 posts / 3
+# accounts and never reached world_term_stats, so a video using it was invisible in
+# the UI even though the term is real. Volume is the wrong guard against one
+# creator's pet phrasing anyway — MIN_ACCOUNTS and _effective_accounts are, and
+# they still apply.
 MIN_ACCOUNTS = 3
 
 # Phase 9 layer 1 — premise/situation clustering (see CLAUDEphase9romanceoverview.md).
@@ -747,14 +752,27 @@ def _self_check() -> None:
     groups = {
         ("discount_product", "spread"): group(spread, [2.0] * 8),
         ("discount_product", "concentrated"): group(concentrated, [2.0] * 12),
-        ("discount_product", "thin"): group({"a": [1], "b": [2], "c": [3]}, [2.0] * 3),
+        # 2 posts / 2 accounts: under both floors, dropped either way.
+        ("discount_product", "thin"): group({"a": [1], "b": [2]}, [2.0] * 2),
+        # 3 posts / 3 accounts: exactly MIN_POSTS/MIN_ACCOUNTS. Admitted since
+        # MIN_POSTS dropped 5 -> 3 — three unrelated creators is the signal the
+        # floor exists to find, not noise it exists to reject.
+        ("discount_product", "borderline"): group({"a": [1], "b": [2], "c": [3]}, [2.0] * 3),
     }
     stats = _group_stats(_W(), groups, world_median=1.0, min_effective_accounts=MIN_EFFECTIVE_ACCOUNTS)
+    # "borderline" clears MIN_POSTS/MIN_ACCOUNTS but not phase 15's concentration
+    # floor (3 effective accounts < MIN_EFFECTIVE_ACCOUNTS=4) — the two floors are
+    # independent, and lowering MIN_POSTS deliberately did not loosen that one.
     assert {s["canon_term"] for s in stats} == {"spread"}, stats
     assert stats[0]["n_posts"] == 8 and stats[0]["n_accounts"] == 4
     assert abs(stats[0]["lift"] - 1.0) < 1e-9
-    # without the concentration floor, only the n_posts/n_accounts floor applies
-    assert {s["canon_term"] for s in _group_stats(_W(), groups, 1.0)} == {"spread", "concentrated"}
+    # without the concentration floor, only the n_posts/n_accounts floor applies,
+    # so the one-account-wearing-a-hat group survives too
+    assert {s["canon_term"] for s in _group_stats(_W(), groups, 1.0)} == {
+        "spread", "concentrated", "borderline"
+    }
+    # the floor still bites below 3
+    assert all(s["canon_term"] != "thin" for s in _group_stats(_W(), groups, 1.0))
 
     print("overview self-check ok")
 

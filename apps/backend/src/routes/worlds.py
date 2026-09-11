@@ -1,15 +1,20 @@
 """Phase 7's three read endpoints — the real consumer FastAPI was waiting for.
 
-Read-only over topology.world_term_stats/post_terms, written by `make overview`
+One write endpoint since: PUT /worlds/{slug}/patterns/{key} stores the UI's
+note / hidden / manual order for one account peak pattern (topology.pattern_notes).
+
+Otherwise read-only over topology.world_term_stats/post_terms, written by `make overview`
 (src/scripts/run_overview.py). Nothing here recomputes a ranking; a stale
 world just means `make overview` hasn't been rerun since the last `make route`.
 """
 
+import datetime
+
 import numpy as np
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 from sqlalchemy import func, select
 
-from src.db.models import Account, Post, PostTerm, World, WorldPost, WorldTermStat
+from src.db.models import ANNOTATION_FIELDS, Account, Annotation, Post, PostTerm, World, WorldPost, WorldTermStat
 from src.db.session import SessionLocal
 from src.services.account_patterns import account_patterns
 from src.services.overview import MIN_POSTS, world_median
@@ -64,9 +69,12 @@ def list_worlds() -> list[dict]:
 def world_overview(
     slug: str,
     facet: str = Query(...),
-    sort: str = Query("lift", pattern="^(lift|volume|account)$"),
+    sort: str = Query("lift", pattern="^(lift|volume|account|variants)$"),
     min_posts: int = Query(MIN_POSTS, ge=1),
+    max_posts: int | None = Query(None, ge=1),
     limit: int = Query(25, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    favorites_only: bool = Query(False),
 ) -> dict:
     db = SessionLocal()
     try:
@@ -98,17 +106,50 @@ def world_overview(
         stmt = select(WorldTermStat).where(
             WorldTermStat.world_id == world.id, WorldTermStat.facet == facet, WorldTermStat.n_posts >= min_posts
         )
+        # volume_ratio's denominator stays the whole facet's median, computed
+        # before max_posts narrows the set — otherwise filtering to the small
+        # clusters would rescale every ratio against the small clusters and a
+        # term's number would change meaning depending on the active filter.
         facet_n_posts = [row.n_posts for row in db.execute(stmt).scalars()]
         median_n_posts = float(np.median(facet_n_posts)) if facet_n_posts else 0.0
 
-        if sort == "volume":
+        if max_posts is not None:
+            stmt = stmt.where(WorldTermStat.n_posts <= max_posts)
+
+        if sort == "variants":
+            # How many raw terms the cluster absorbed. Surfaces over-merged
+            # clusters for review — single-link chaining pulls 50+ loosely
+            # related phrasings under one label (see overview.py's note).
+            order = func.cardinality(WorldTermStat.variants).desc()
+        elif sort == "volume":
             order = WorldTermStat.n_posts.desc()
         elif sort == "account":
             order = WorldTermStat.account_lift.desc()
         else:
             order = WorldTermStat.lift.desc()
-        stmt = stmt.order_by(order)
-        term_rows = db.execute(stmt.limit(limit)).scalars().all()
+
+        # Annotations are joined and ordered in SQL, not applied client-side after
+        # the limit — a starred term that has since fallen out of the top `limit`
+        # by lift must still come back, which a post-hoc sort of the page can't do.
+        annotated = stmt.add_columns(Annotation).outerjoin(
+            Annotation, Annotation.key == func.concat(f"{slug}:{facet}:", WorldTermStat.canon_term)
+        ).order_by(
+            func.coalesce(Annotation.favorite, False).desc(),
+            func.coalesce(Annotation.sort_order, 0),
+            order,
+            # Total order, required for offset paging to be correct: lift/n_posts
+            # tie constantly at the low-volume end (dozens of terms share 3 posts),
+            # and Postgres is free to return tied rows in a different order per
+            # query — which silently duplicates some across page boundaries and
+            # drops others entirely.
+            WorldTermStat.canon_term.asc(),
+        )
+        if favorites_only:
+            # Filtered in SQL for the same reason it's ordered there: a starred term
+            # below the top `limit` by lift must still appear in the favourites view.
+            annotated = annotated.where(Annotation.favorite.is_(True))
+        total = db.execute(select(func.count()).select_from(annotated.subquery())).scalar_one()
+        term_rows = db.execute(annotated.limit(limit).offset(offset)).all()
 
         return {
             "coverage": {
@@ -120,8 +161,13 @@ def world_overview(
                 "world_median_views": float(np.expm1(median)),
                 "computed_at": computed_at,
             },
+            # Row count for the whole ordered set, so a paging client knows how
+            # far it has left to go without fetching to find out.
+            "total": total,
+            "offset": offset,
             "terms": [
                 {
+                    "key": term_key(slug, facet, t.canon_term),
                     "canon_term": t.canon_term,
                     "n_posts": t.n_posts,
                     "n_accounts": t.n_accounts,
@@ -132,8 +178,13 @@ def world_overview(
                     "account_view_ratio": t.account_view_ratio,
                     "account_lift": t.account_lift,
                     "variants": t.variants,
+                    "note": a.note if a else "",
+                    "favorite": bool(a and a.favorite),
+                    "reviewed": bool(a and a.reviewed),
+                    "hidden": bool(a and a.hidden),
+                    "sort_order": a.sort_order if a else 0,
                 }
-                for t in term_rows
+                for t, a in term_rows
             ],
         }
     finally:
@@ -146,6 +197,34 @@ def world_accounts(slug: str) -> list[dict]:
     try:
         world = _get_world(db, slug)
         return account_patterns(db, world)
+    finally:
+        db.close()
+
+
+def term_key(slug: str, facet: str, canon_term: str) -> str:
+    """The annotation key for one term cluster. Terms have no stored id — the
+    world_term_stats row is rebuilt wholesale every `make overview` — so the
+    (world, facet, canon_term) triple is the stable handle."""
+    return f"{slug}:{facet}:{canon_term}"
+
+
+@router.put("/annotations/{key:path}")
+def set_annotation(key: str, body: dict = Body(...)) -> dict:
+    """Upsert-merge of one annotation — only the keys present in the body are
+    touched, so the UI can send one field at a time (note edit, star, review
+    check, reorder) without round-tripping the others. Shared by the account
+    patterns view and the terms view; `key` is whatever that view uses (a post
+    uuid, or term_key()'s slug:facet:term triple), url-encoded."""
+    db = SessionLocal()
+    try:
+        row = db.get(Annotation, key) or Annotation(key=key)
+        for field in ANNOTATION_FIELDS:
+            if field in body:
+                setattr(row, field, body[field])
+        row.updated_at = datetime.datetime.utcnow()
+        row = db.merge(row)
+        db.commit()
+        return {"key": key} | {f: getattr(row, f) for f in ANNOTATION_FIELDS}
     finally:
         db.close()
 
