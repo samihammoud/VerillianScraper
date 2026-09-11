@@ -12,6 +12,7 @@ intentionally runs without it.
 from collections import defaultdict
 
 import numpy as np
+from scipy.cluster.hierarchy import fcluster, linkage
 from sklearn.cluster import HDBSCAN
 from sklearn.decomposition import PCA
 from sqlalchemy import delete, select
@@ -23,7 +24,15 @@ from src.services.embeddings import embed_batch
 from src.services.linalg import l2_normalize
 from src.services.terms import CLUSTERED_FACETS, RAW_FACETS, extract_scrape_terms, extract_terms, normalize
 
-CLUSTER_THRESHOLD = 0.86  # tuned once in phase 2 by eyeballing merges against `variants`
+# Retuned 2026-09-10 alongside the single-link -> average-linkage swap in
+# _canonicalize_facet. 0.86 was tuned against single-link's chaining behaviour and
+# doesn't transfer: under average linkage it over-splits, and the frequency-vote
+# label degrades with it ("pink graphic t shirt" naming a cluster of a dozen
+# colours, because the generic term had split off into its own cluster). Swept
+# 0.74/0.78/0.82/0.86 over discount-shopping's real cached embeddings for `product`
+# (28,299 terms) and `topic` (22,304); 0.78 merges colour/qualifier variants of one
+# thing while keeping `plush toy` distinct from `squishy toy`.
+CLUSTER_THRESHOLD = 0.78
 MIN_POSTS = 3  # was 5. Three unrelated creators converging on a phrase is signal,
 # and the 5-post bar was discarding it: 'inconsistent texting' sat at 3 posts / 3
 # accounts and never reached world_term_stats, so a video using it was invisible in
@@ -72,6 +81,14 @@ PREMISE_MIN_CLUSTER_SIZE = 8
 # while costing real clusters 2-6% of their members; 0.45 starts killing
 # legitimate clusters outright.
 MEMBER_COSINE_FLOOR = 0.35
+# Swept over romance's real advice embeddings (2026-09-10, 1,634 deduped sentences):
+# 0.55 -> 5 clusters, 0.50 -> 8, 0.45 -> 22, 0.40 -> 41 with the top cluster at 114 and
+# visibly merged themes. 0.45 is the last threshold where every cluster above the support
+# floor reads as one recommendation. Separate from CLUSTER_THRESHOLD (0.78) because that
+# one is tuned for 2-4 word noun phrases; these are full sentences, which paraphrase far
+# more, exactly as PREMISE_* notes for premise.
+ADVICE_CLUSTER_THRESHOLD = 0.45
+
 MEDIAN_LIFT_TOLERANCE = 1.0  # log-space; see rollup()'s assert for what a violation means
 
 
@@ -158,7 +175,23 @@ def _canonicalize_facet(db, world: World, facet: str, norm_term_counts: dict[str
     if len(norm_terms) == 1:
         cluster_ids = [0]
     else:
-        cluster_ids = cluster_by_threshold(cosine_similarity_matrix(matrix), CLUSTER_THRESHOLD)
+        # Average linkage, NOT single-link (cluster_by_threshold). A term has to
+        # be close to the cluster's mean, not to any one member, so transitive
+        # chains can't form. Single-link at 0.86 over discount-shopping's 22,304
+        # `topic` terms produced one 1,868-term cluster labeled "thrift store
+        # shopping" holding "liquidation shopping" and "furniture upcycling
+        # project"; average linkage over the identical embeddings caps the
+        # largest at 22. Same failure and same fix as phase 9's premise
+        # clustering (see PREMISE_* above) — this call site just never got it.
+        # scipy rather than sklearn's AgglomerativeClustering: that one
+        # materializes the full n x n float64 distance matrix (6.4GB at this
+        # world's 28k product terms), where the condensed upper triangle is
+        # half of it and feeds the same nn-chain algorithm.
+        sim = cosine_similarity_matrix(matrix)
+        condensed = (1.0 - sim[np.triu_indices(len(norm_terms), 1)]).astype(np.float64)
+        del sim
+        np.clip(condensed, 0, None, out=condensed)  # fp error can make identical vectors -1e-8
+        cluster_ids = fcluster(linkage(condensed, method="average"), t=1 - CLUSTER_THRESHOLD, criterion="distance")
 
     members_by_cluster: dict[int, list[str]] = defaultdict(list)
     for term, cid in zip(norm_terms, cluster_ids):
@@ -384,7 +417,26 @@ def _punchline_text(vlm_json: dict | None) -> str | None:
     return punchline.strip() if punchline else None
 
 
-def _text_field_clusters(db, world: World, world_median: float, facet: str, text_fn) -> tuple[list[dict], list[dict]]:
+def _advice_text(vlm_json: dict | None) -> str | None:
+    """Phase 9 layer 3 shape, over the advice the video gives rather than the
+    situation it depicts. Only posts the VLM judged `advice.present` are
+    candidates — everything else returns None and never reaches the clustering
+    pass, so this facet answers "of the posts that give advice, which advice
+    keeps winning". Embeds `content` (the advice itself); `topic` is a 2-4 word
+    noun phrase that would cluster on subject rather than on the actual
+    recommendation."""
+    if not vlm_json:
+        return None
+    advice = vlm_json.get("advice") or {}
+    if not advice.get("present"):
+        return None
+    content = advice.get("content")
+    return content.strip() if content else None
+
+
+def _text_field_clusters(
+    db, world: World, world_median: float, facet: str, text_fn, cosine_threshold: float | None = None
+) -> tuple[list[dict], list[dict]]:
     """Generic embed+cluster+rank over one free-text vlm_json field — shared
     by premise (layer 1), hook, and punchline (layer 3) clustering, since all
     three are the same pipeline over a different field: pull candidate posts,
@@ -427,8 +479,24 @@ def _text_field_clusters(db, world: World, world_median: float, facet: str, text
     sim = cosine_similarity_matrix(vectors)  # kept at full dimensionality — medoid/variant
     # selection is a small per-cluster lookup, not the clustering step itself, so it doesn't
     # inherit the high-dimensional density problem PCA below is working around.
-    reduced = PCA(n_components=min(PREMISE_PCA_DIMS, len(reps) - 1), random_state=0).fit_transform(normalized)
-    cluster_ids = HDBSCAN(min_cluster_size=PREMISE_MIN_CLUSTER_SIZE, metric="euclidean").fit_predict(reduced)
+    if cosine_threshold is not None:
+        # Average-linkage instead of PCA+HDBSCAN — same swap, same reason as
+        # _canonicalize_facet's. HDBSCAN needs density islands; a field whose
+        # sentences form one continuous cloud has none, and it degenerates to a
+        # single blob plus noise. Measured on romance's advice corpus
+        # (1,634 deduped sentences, 2026-09-10): every PCA(20/50/100) x
+        # min_cluster_size(8/15/25) cell returned 0 or 1 cluster above the
+        # support floor, the surviving one holding 667 of them. Average linkage
+        # over the same embeddings gives 22 separable clusters at 0.45 (no
+        # contact / take ownership of your triggers / validate your partner's
+        # feelings as distinct rows). Premise/hook/punchline keep HDBSCAN —
+        # their sweeps (see PREMISE_PCA_DIMS) already ruled linkage out there.
+        condensed = (1.0 - sim[np.triu_indices(len(reps), 1)]).astype(np.float64)
+        np.clip(condensed, 0, None, out=condensed)
+        cluster_ids = fcluster(linkage(condensed, method="average"), t=1 - cosine_threshold, criterion="distance")
+    else:
+        reduced = PCA(n_components=min(PREMISE_PCA_DIMS, len(reps) - 1), random_state=0).fit_transform(normalized)
+        cluster_ids = HDBSCAN(min_cluster_size=PREMISE_MIN_CLUSTER_SIZE, metric="euclidean").fit_predict(reduced)
     cluster_by_rep_id = dict(zip(rep_ids, cluster_ids))
 
     members_by_cluster: dict[int, list[dict]] = defaultdict(list)
@@ -549,6 +617,15 @@ def _punchline_clusters(db, world: World, world_median: float) -> tuple[list[dic
     return _text_field_clusters(db, world, world_median, "punchline_cluster", _punchline_text)
 
 
+def _advice_clusters(db, world: World, world_median: float) -> tuple[list[dict], list[dict]]:
+    """Advice space — see _advice_text. Same support floors as premise, but
+    average-linkage at ADVICE_CLUSTER_THRESHOLD rather than HDBSCAN — see the
+    branch in _text_field_clusters for the measurement that forced the swap."""
+    return _text_field_clusters(
+        db, world, world_median, "advice_cluster", _advice_text, cosine_threshold=ADVICE_CLUSTER_THRESHOLD
+    )
+
+
 def rollup(db, world_slug: str) -> list[dict]:
     """The one entry point. Returns the stats rows it wrote, for callers
     (run_overview.py) that want to print a summary without a second query."""
@@ -566,6 +643,7 @@ def rollup(db, world_slug: str) -> list[dict]:
         ("setting_cluster", _setting_clusters),
         ("hook_cluster", _hook_clusters),
         ("punchline_cluster", _punchline_clusters),
+        ("advice_cluster", _advice_clusters),
     ]:
         cluster_stats, cluster_post_terms = cluster_fn(db, world, median)
         if cluster_post_terms:
@@ -730,6 +808,11 @@ def _self_check() -> None:
     assert _discount_names({"products": None}) == (set(), 0, 0)
     assert _discount_names({"products": [{"name": "x"}]}) == (set(), 1, 0)  # no value_signal -> not a deal
 
+    assert _advice_text({"advice": {"present": True, "content": " just talk to him "}}) == "just talk to him"
+    assert _advice_text({"advice": {"present": False, "content": "ignored"}}) is None
+    assert _advice_text({"advice": {"present": True, "content": None}}) is None
+    assert _advice_text({}) is None and _advice_text(None) is None
+
     assert abs(_effective_accounts({"a": {1, 2, 3, 4, 5}}) - 1.0) < 1e-9
     assert abs(_effective_accounts({"a": {1, 2}, "b": {3, 4}}) - 2.0) < 1e-9
     assert _effective_accounts({}) == 0.0
@@ -773,6 +856,18 @@ def _self_check() -> None:
     }
     # the floor still bites below 3
     assert all(s["canon_term"] != "thin" for s in _group_stats(_W(), groups, 1.0))
+
+    # The chaining guard: three terms on a 0.5-radian arc, each within 0.86 of
+    # its neighbour but not of the far one. Single-link merges all three (that's
+    # the bug); average linkage must keep the ends apart.
+    arc = np.array([[1.0, 0.0], [np.cos(0.5), np.sin(0.5)], [np.cos(1.0), np.sin(1.0)]])
+    sim = cosine_similarity_matrix(arc)
+    condensed = (1.0 - sim[np.triu_indices(3, 1)]).astype(np.float64)
+    assert sim[0, 1] > 0.86 and sim[1, 2] > 0.86 and sim[0, 2] < 0.86, sim
+    ids = fcluster(linkage(condensed, method="average"), t=1 - 0.86, criterion="distance")
+    # The near pair still merges — the point is only that the far end doesn't
+    # ride in with them, which single-link would have let it do.
+    assert ids[0] != ids[2], f"average linkage chained the arc into {list(ids)}"
 
     print("overview self-check ok")
 

@@ -155,17 +155,28 @@ function CoverageStrip({ coverage }) {
 // makes a facet worth browsing was never reachable.
 const TERM_LIMIT = 200;
 
-// Cluster-size bands. MIN_POSTS=3 is the server's floor, so "emerging" (3-9) is
-// a term several creators reached for that hasn't spread yet, and "established"
-// (25+) is a settled pattern. Applied server-side via min_posts/max_posts so the
-// band composes with sorting and paging — filtering the page client-side would
-// silently shrink a page of 200 to whatever happened to match.
+// Cluster-size bands. The default floor is 6 posts, not the server's MIN_POSTS=3:
+// split-half replication on discount-shopping (13,657 posts) put a 3-post term's
+// lift at 65% directional agreement against a 50% coin flip, and 6/4 at 70% while
+// halving the list (2058 -> ~1019 topic terms). The 3-5 tail stays one click away
+// rather than being dropped — MIN_POSTS was lowered to 3 for recall on purpose, so
+// the tail is real data we just don't rank by default. Bands partition, so
+// "emerging" starts at 6 where the default floor does. Applied server-side via
+// min_posts/max_posts so the band composes with sorting and paging — filtering the
+// page client-side would silently shrink a page of 200 to whatever happened to match.
 const SIZE_BANDS = [
-  { key: "all", label: "ALL" },
-  { key: "emerging", label: "3-9", max: 9 },
+  { key: "all", label: "6+", min: 6 },
+  { key: "tail", label: "3-5", min: 3, max: 5 },
+  { key: "emerging", label: "6-9", min: 6, max: 9 },
   { key: "growing", label: "10-24", min: 10, max: 24 },
   { key: "established", label: "25+", min: 25 },
 ];
+
+// Distinct accounts carrying the term. 4 by default for the same reason SIZE_BANDS
+// floors at 6. Deliberately not higher: shuffling account labels admits MORE terms
+// at every floor than the real corpus does, so this is a concentration check —
+// "not one creator's pet phrase" — not evidence that a format transfers.
+const ACCOUNT_FLOORS = [3, 4, 5, 6];
 
 // Accumulating pager over /overview. Pages are appended rather than replaced, so
 // "load more" grows one list instead of swapping pages — the panel is a ranked
@@ -237,6 +248,7 @@ function TermPanel({ slug, facet, label, onSelectTerm }) {
   // instead of silently snapping the number back to lift.
   const [metric, setMetric] = useState("lift");
   const [band, setBand] = useState("all");
+  const [minAccounts, setMinAccounts] = useState(4);
   const [notes, setNotes] = useState({}); // local edits, keyed by term key
   const [openNote, setOpenNote] = useState(null);
   const [favOnly, setFavOnly] = useState(false);
@@ -249,7 +261,8 @@ function TermPanel({ slug, facet, label, onSelectTerm }) {
     slug
       ? `${API}/worlds/${slug}/overview?facet=${facet}&sort=${sort}&favorites_only=${favOnly}` +
         (activeBand.min ? `&min_posts=${activeBand.min}` : "") +
-        (activeBand.max ? `&max_posts=${activeBand.max}` : "")
+        (activeBand.max ? `&max_posts=${activeBand.max}` : "") +
+        `&min_accounts=${minAccounts}`
       : null,
     TERM_LIMIT
   );
@@ -347,6 +360,20 @@ function TermPanel({ slug, facet, label, onSelectTerm }) {
             }}
           >
             {b.label}
+          </span>
+        ))}
+        <span style={{ letterSpacing: 1, marginLeft: 6 }}>ACCTS</span>
+        {ACCOUNT_FLOORS.map((n) => (
+          <span
+            key={n}
+            onClick={() => setMinAccounts(n)}
+            style={{
+              cursor: "pointer",
+              color: minAccounts === n ? "var(--accent)" : "var(--text-dim)",
+              textDecoration: minAccounts === n ? "underline" : "none",
+            }}
+          >
+            {n}+
           </span>
         ))}
       </div>
@@ -803,6 +830,15 @@ const CATEGORIES = [
       { facet: "premise_cluster", label: "Situations (premise clusters)", fullWidth: true },
       { facet: "setting_cluster", label: "Settings (setting clusters)", fullWidth: true },
     ],
+  },
+  {
+    // Advice space — only posts where the VLM saw someone giving advice
+    // (advice.present) feed advice_cluster, so this ranks the advice itself,
+    // not the situations around it.
+    key: "advice",
+    label: "Advice Given",
+    romanceOnly: true,
+    panels: [{ facet: "advice_cluster", label: "Advice Given (advice clusters)", fullWidth: true }],
   },
   {
     key: "hooks",

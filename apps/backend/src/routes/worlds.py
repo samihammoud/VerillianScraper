@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from src.db.models import ANNOTATION_FIELDS, Account, Annotation, Post, PostTerm, World, WorldPost, WorldTermStat
 from src.db.session import SessionLocal
 from src.services.account_patterns import account_patterns
-from src.services.overview import MIN_POSTS, world_median
+from src.services.overview import MIN_ACCOUNTS, MIN_POSTS, world_median
 
 router = APIRouter(prefix="/worlds", tags=["worlds"])
 
@@ -72,6 +72,7 @@ def world_overview(
     sort: str = Query("lift", pattern="^(lift|volume|account|variants)$"),
     min_posts: int = Query(MIN_POSTS, ge=1),
     max_posts: int | None = Query(None, ge=1),
+    min_accounts: int = Query(MIN_ACCOUNTS, ge=1),
     limit: int = Query(25, ge=1, le=200),
     offset: int = Query(0, ge=0),
     favorites_only: bool = Query(False),
@@ -103,16 +104,25 @@ def world_overview(
 
         median = world_median(db, world)
 
-        stmt = select(WorldTermStat).where(
-            WorldTermStat.world_id == world.id, WorldTermStat.facet == facet, WorldTermStat.n_posts >= min_posts
-        )
+        stmt = select(WorldTermStat).where(WorldTermStat.world_id == world.id, WorldTermStat.facet == facet)
         # volume_ratio's denominator stays the whole facet's median, computed
-        # before max_posts narrows the set — otherwise filtering to the small
+        # before any support filter narrows the set — otherwise filtering to the small
         # clusters would rescale every ratio against the small clusters and a
         # term's number would change meaning depending on the active filter.
+        # min_posts used to be applied above this line, which exempted it from that
+        # rule: it was a no-op only while the UI left it at MIN_POSTS, and became a
+        # silent rescale of every ratio in the app once the default floor moved to 6.
         facet_n_posts = [row.n_posts for row in db.execute(stmt).scalars()]
         median_n_posts = float(np.median(facet_n_posts)) if facet_n_posts else 0.0
 
+        # Support floors are read-time, not pipeline constants: a 3-post term still
+        # reaches world_term_stats (MIN_POSTS was deliberately lowered to 3 for recall),
+        # it just isn't ranked by default. Measured on discount-shopping's 13,657 posts
+        # via split-half replication: at 3 posts/3 accounts a term's lift agrees on
+        # direction across halves only 65% of the time (vs. a 50% coin flip), 70% at
+        # 6/4. Shuffling account labels admits MORE terms than the real data at every
+        # floor, so n_accounts is a concentration check, not evidence of convergence.
+        stmt = stmt.where(WorldTermStat.n_posts >= min_posts, WorldTermStat.n_accounts >= min_accounts)
         if max_posts is not None:
             stmt = stmt.where(WorldTermStat.n_posts <= max_posts)
 
