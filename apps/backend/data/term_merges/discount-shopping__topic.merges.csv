@@ -1,0 +1,242 @@
+world,facet,from_term,to_term
+discount-shopping,topic,dumpster find,dumpster diving find
+discount-shopping,topic,dumpster dive haul,dumpster diving find
+discount-shopping,topic,dumpster diving jackpot,dumpster diving find
+discount-shopping,topic,dumpster salvage haul,dumpster diving find
+discount-shopping,topic,thrift store hunting,thrift store shopping
+discount-shopping,topic,thrift store score,thrift store find
+discount-shopping,topic,thrift price checking,thrift store pricing
+discount-shopping,topic,couponing at dollar general,dollar general couponing
+discount-shopping,topic,couponing at walgreen,walgreens coupon deal
+discount-shopping,topic,coupon deal stacking,coupon stacking deal
+discount-shopping,topic,extracare bucks saving,extrabucks rewards breakdown
+discount-shopping,topic,penny shopping haul,penny shopping find
+discount-shopping,topic,penny item hunting,penny shopping find
+discount-shopping,topic,furniture restoration,furniture refinishing
+discount-shopping,topic,wood restoration,wood refinishing
+discount-shopping,topic,wood furniture restoration,wood refinishing
+discount-shopping,topic,diy wood refinishing,wood refinishing
+discount-shopping,topic,diy wood restoration,wood refinishing
+discount-shopping,topic,diy dresser makeover,dresser makeover
+discount-shopping,topic,wooden dresser restoration,dresser restoration
+discount-shopping,topic,wood dresser restoration,dresser restoration
+discount-shopping,topic,abandoned storage locker,abandoned storage unit
+discount-shopping,topic,abandoned storage treasure,abandoned storage unit
+discount-shopping,topic,storage unit haul,storage locker haul
+discount-shopping,topic,storage unit treasure,storage unit find
+discount-shopping,topic,goodwill outlet bin,goodwill bins haul
+discount-shopping,topic,thrift bins haul,goodwill bins haul
+discount-shopping,topic,thrift outlet bin,goodwill bins haul
+discount-shopping,topic,outlet bins haul,goodwill bins haul
+discount-shopping,topic,goodwill bins by pound,goodwill bins haul
+discount-shopping,topic,bin store haul,bin store shopping
+discount-shopping,topic,liquidation bin shopping,bin store shopping
+discount-shopping,topic,retail waste,retail waste rescue
+discount-shopping,topic,retail salvage,retail waste rescue
+discount-shopping,topic,commercial retail waste,retail waste rescue
+discount-shopping,topic,retail waste haul,retail waste rescue
+discount-shopping,topic,retail discard salvage,retail waste rescue
+discount-shopping,topic,discarded retail good,discarded retail merchandise
+discount-shopping,topic,discarded store inventory,discarded retail merchandise
+discount-shopping,topic,discarded merchandise haul,discarded retail merchandise
+discount-shopping,topic,discarded merchandise salvage,discarded retail merchandise
+discount-shopping,topic,salvaged merchandise,discarded retail merchandise
+discount-shopping,topic,rescuing discarded food,food waste rescue
+discount-shopping,topic,food rescue,food waste rescue
+discount-shopping,topic,free food salvage,food waste rescue
+discount-shopping,topic,grocery food waste,food waste rescue
+discount-shopping,topic,discarded grocery food,food waste rescue
+discount-shopping,topic,electronics salvage,discarded electronic
+discount-shopping,topic,salvaging discarded electronic,discarded electronic
+discount-shopping,topic,e waste recovery,discarded electronic
+discount-shopping,topic,curbside electronic find,curbside electronic salvage
+discount-shopping,topic,rescuing discarded item,salvaging discarded good
+discount-shopping,topic,discarded items discovery,salvaging discarded good
+discount-shopping,topic,salvaged beauty product,discarded beauty product
+discount-shopping,topic,beauty product rescue,discarded beauty product
+discount-shopping,topic,salvaging discarded makeup,discarded beauty product
+discount-shopping,topic,cosmetics waste recovery,discarded beauty product
+discount-shopping,topic,beauty dumpster diving,dumpster diving makeup
+discount-shopping,topic,ulta dumpster find,ulta dumpster diving
+discount-shopping,topic,curbside trash picking,curbside salvage
+discount-shopping,topic,curbside treasure hunting,curbside salvage
+discount-shopping,topic,street treasure hunting,curbside salvage
+discount-shopping,topic,street scavenging,curbside salvage
+discount-shopping,topic,curbside foraging,curbside salvage
+discount-shopping,topic,neighborhood scavenging,curbside salvage
+discount-shopping,topic,curbside free item,curbside free find
+discount-shopping,topic,free curb find,curbside free find
+discount-shopping,topic,curbside free pile,curbside free find
+discount-shopping,topic,free curb item,curbside free find
+discount-shopping,topic,free street find,curbside free find
+discount-shopping,topic,free sidewalk find,curbside free find
+discount-shopping,topic,neighborhood free pile,curbside free find
+discount-shopping,topic,neighborhood curb alert,curb alert find
+discount-shopping,topic,curb alert giveaway,curb alert find
+discount-shopping,topic,curb alert scavenging,curb alert find
+discount-shopping,topic,curbside giveaway,curb alert find
+discount-shopping,topic,neighborhood yard giveaway,neighborhood giveaway
+discount-shopping,topic,free curb furniture,curbside furniture rescue
+discount-shopping,topic,free street furniture,curbside furniture rescue
+discount-shopping,topic,free furniture rescue,curbside furniture rescue
+discount-shopping,topic,free furniture find,curbside furniture rescue
+discount-shopping,topic,free furniture giveaway,curbside furniture rescue
+discount-shopping,topic,free furniture pickup,curbside furniture rescue
+discount-shopping,topic,curbside bulk trash,bulk trash day
+discount-shopping,topic,bulk trash hunting,bulk trash day
+discount-shopping,topic,rebate app saving,cashback rebate app
+discount-shopping,topic,cashback couponing app,cashback rebate app
+discount-shopping,topic,cash back rebate shopping,cashback rebate app
+discount-shopping,topic,estate sale picking,estate sale shopping
+discount-shopping,topic,estate sale walkthrough,estate sale shopping
+discount-shopping,topic,garage sale shopping,garage sale hunting
+discount-shopping,topic,garage sale thrifting,garage sale hunting
+discount-shopping,topic,garage sale reselling,garage sale flipping
+discount-shopping,topic,yard sale hunting,yard sale shopping
+discount-shopping,topic,yard sale thrifting,yard sale shopping
+discount-shopping,topic,yard sale picking,yard sale shopping
+discount-shopping,topic,laundry detergent saving,laundry detergent deal
+discount-shopping,topic,antique mall booth,antique booth sale
+discount-shopping,topic,antique market shopping,antique shopping
+discount-shopping,topic,glassware collecting,vintage glassware collection
+discount-shopping,topic,antique glassware collection,vintage glassware collection
+discount-shopping,topic,vintage glassware display,vintage glassware collection
+discount-shopping,topic,resale value lookup,resale value comparison
+discount-shopping,topic,resale price lookup,resale value comparison
+discount-shopping,topic,resale value check,resale value comparison
+discount-shopping,topic,resale value comp,resale value comparison
+discount-shopping,topic,reselling price check,resale value comparison
+discount-shopping,topic,ebay comp research,ebay sold comp
+discount-shopping,topic,ebay comp checking,ebay sold comp
+discount-shopping,topic,reselling video game,video game reselling
+discount-shopping,topic,video game flipping,video game reselling
+discount-shopping,topic,vintage video game,retro video game
+discount-shopping,topic,retro gaming console,vintage gaming console
+discount-shopping,topic,goodwill shopping,goodwill thrift shopping
+discount-shopping,topic,goodwill browsing,goodwill thrift shopping
+discount-shopping,topic,goodwill thrift hunting,goodwill thrift shopping
+discount-shopping,topic,goodwill find,goodwill thrift find
+discount-shopping,topic,household supply deal,household essentials deal
+discount-shopping,topic,household savings breakdown,household essentials saving
+discount-shopping,topic,budget household good,budget household shopping
+discount-shopping,topic,discount household good,budget household shopping
+discount-shopping,topic,household cleaning bargain,cleaning supplies discount
+discount-shopping,topic,grocery store discount,grocery store saving
+discount-shopping,topic,supermarket discount,grocery store saving
+discount-shopping,topic,supermarket discount deal,grocery store saving
+discount-shopping,topic,discount grocery shopping,budget grocery shopping
+discount-shopping,topic,grocery store couponing,grocery coupon deal
+discount-shopping,topic,secondhand home decor,thrifted home decor
+discount-shopping,topic,retro home decor,vintage home decor
+discount-shopping,topic,vintage home aesthetic,vintage home decor
+discount-shopping,topic,home decor staging,home decor styling
+discount-shopping,topic,discount home decor,budget home decor
+discount-shopping,topic,reseller inventory,reselling inventory
+discount-shopping,topic,resale business inventory,reselling inventory
+discount-shopping,topic,wholesale liquidation inventory,liquidation resale inventory
+discount-shopping,topic,reselling on ebay,ebay reselling
+discount-shopping,topic,ebay reselling flip,ebay reselling
+discount-shopping,topic,reselling clothes online,online clothing reselling
+discount-shopping,topic,reselling clothe,online clothing reselling
+discount-shopping,topic,upcycling thrift find,thrift store upcycling
+discount-shopping,topic,wood furniture painting,diy furniture painting
+discount-shopping,topic,painted furniture,diy furniture painting
+discount-shopping,topic,wood paint stripping,wood stripping technique
+discount-shopping,topic,wood stain application,wood staining process
+discount-shopping,topic,mystery box haul,mystery box unboxing
+discount-shopping,topic,blind box opening,blind box unboxing
+discount-shopping,topic,pallet unboxing,liquidation pallet unboxing
+discount-shopping,topic,liquidation unboxing,liquidation pallet unboxing
+discount-shopping,topic,returned mail unboxing,unclaimed mail unboxing
+discount-shopping,topic,weekly coupon matchup,coupon matchup
+discount-shopping,topic,weekly drugstore saving,drugstore saving
+discount-shopping,topic,register rewards stack,register rewards saving
+discount-shopping,topic,discount fashion find,budget fashion find
+discount-shopping,topic,secondhand digital camera,thrifted digital camera
+discount-shopping,topic,digital camera find,thrifted digital camera
+discount-shopping,topic,discount hunting,bargain hunting
+discount-shopping,topic,store discount hunting,retail deal hunting
+discount-shopping,topic,discount store shopping,discount retail shopping
+discount-shopping,topic,discount retail bargain,discount retail shopping
+discount-shopping,topic,discount shopping,discount retail shopping
+discount-shopping,topic,discount retail find,discount store find
+discount-shopping,topic,store discount deal,discount store deal
+discount-shopping,topic,retail store discount,discount store deal
+discount-shopping,topic,clearance inventory scanning,clearance barcode scanning
+discount-shopping,topic,clearance inventory hunting,clearance item hunting
+discount-shopping,topic,clearance markdown hunting,clearance item hunting
+discount-shopping,topic,clearance merchandise,store clearance item
+discount-shopping,topic,store clearance find,retail clearance find
+discount-shopping,topic,clearance aisle find,retail clearance find
+discount-shopping,topic,retail app scanning,app barcode scanning
+discount-shopping,topic,barcode scanning deal,app barcode scanning
+discount-shopping,topic,price checker scan,app barcode scanning
+discount-shopping,topic,dorm move out,college move out
+discount-shopping,topic,thrifting designer bag,designer handbag find
+discount-shopping,topic,secondhand designer clothing,designer clothing find
+discount-shopping,topic,card collecting,trading card collecting
+discount-shopping,topic,pokemon trading card,pokemon card collecting
+discount-shopping,topic,self checkout purchase,self checkout saving
+discount-shopping,topic,diy nightstand makeover,nightstand makeover
+discount-shopping,topic,wood nightstand makeover,nightstand makeover
+discount-shopping,topic,order fulfillment packaging,reselling order fulfillment
+discount-shopping,topic,reselling order packaging,reselling order fulfillment
+discount-shopping,topic,order packing process,reselling order fulfillment
+discount-shopping,topic,order packaging process,reselling order fulfillment
+discount-shopping,topic,packing customer order,reselling order fulfillment
+discount-shopping,topic,reselling business order,small business order
+discount-shopping,topic,simpsons episode,simpsons episode recap
+discount-shopping,topic,animated series recap,cartoon recap
+discount-shopping,topic,cartoon plot explanation,cartoon recap
+discount-shopping,topic,carhartt jacket find,vintage carhartt jacket
+discount-shopping,topic,vintage denim thrifting,vintage denim find
+discount-shopping,topic,halloween decor thrifting,halloween decor shopping
+discount-shopping,topic,secondhand furniture haul,secondhand furniture shopping
+discount-shopping,topic,selling used furniture,furniture resale
+discount-shopping,topic,shoe reselling haul,reselling shoe haul
+discount-shopping,topic,toy collection,toy collecting
+discount-shopping,topic,vintage toy flip,vintage toy resale
+discount-shopping,topic,reselling profit margin,reselling profit
+discount-shopping,topic,weekend sales recap,reselling sales recap
+discount-shopping,topic,whatnot live auction,whatnot live sale
+discount-shopping,topic,whatnot live stream,whatnot live sale
+discount-shopping,topic,personal care discount,personal care saving
+discount-shopping,topic,budget personal care,personal care saving
+discount-shopping,topic,discount beauty shopping,budget beauty shopping
+discount-shopping,topic,makeup haul,cosmetics haul
+discount-shopping,topic,secondhand store browsing,secondhand shopping
+discount-shopping,topic,extreme frugality habit,frugal living habit
+discount-shopping,topic,thrift store electronics find,thrift store electronic
+discount-shopping,topic,electronics reselling,reselling electronic
+discount-shopping,topic,vintage electronics flipping,vintage electronics reselling
+discount-shopping,topic,used electronics browsing,secondhand electronic
+discount-shopping,topic,y2k fashion thrift,y2k fashion find
+discount-shopping,topic,mystery jewelry jar,mystery jewelry unboxing
+discount-shopping,topic,bookstore browsing,used bookstore shopping
+discount-shopping,topic,coupon stockpile organization,couponing stockpile
+discount-shopping,topic,target circle digital coupon,target circle deal
+discount-shopping,topic,target app couponing,target coupon deal
+discount-shopping,topic,coupon glitch deal,digital coupon glitch
+discount-shopping,topic,saturday savings scenario,saturday coupon scenario
+discount-shopping,topic,bargain negotiation,price negotiation
+discount-shopping,topic,store price check,retail price comparison
+discount-shopping,topic,closet clean out,closet cleanout sale
+discount-shopping,topic,secondhand vintage find,vintage thrift find
+discount-shopping,topic,tj maxx haul,tj maxx shopping
+discount-shopping,topic,diaper coupon deal,baby diaper deal
+discount-shopping,topic,back to school supply,back to school shopping
+discount-shopping,topic,vintage sportswear hunting,vintage sportswear find
+discount-shopping,topic,styling thrifted find,thrifted outfit styling
+discount-shopping,topic,secondhand footwear find,thrift store footwear
+discount-shopping,topic,thrifted home good,secondhand home good
+discount-shopping,topic,secondhand brand find,brand name thrifting
+discount-shopping,topic,store coupon saving,retail coupon saving
+discount-shopping,topic,pet supply rescue,discarded pet supply
+discount-shopping,topic,holiday decor rescue,discarded holiday decor
+discount-shopping,topic,facebook marketplace meetup,facebook marketplace pickup
+discount-shopping,topic,local marketplace meetup,facebook marketplace pickup
+discount-shopping,topic,in person item meetup,facebook marketplace pickup
+discount-shopping,topic,vintage clothing shopping,vintage clothing hunting
+discount-shopping,topic,vintage clothing thrifting,vintage clothing hunting
+discount-shopping,topic,secondhand clothing hunt,secondhand clothing find
+discount-shopping,topic,secondhand clothing,secondhand clothing find

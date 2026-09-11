@@ -15,7 +15,7 @@ import numpy as np
 from scipy.cluster.hierarchy import fcluster, linkage
 from sklearn.cluster import HDBSCAN
 from sklearn.decomposition import PCA
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from src.db.models import Post, PostTerm, TermEmbedding, World, WorldPost, WorldTermStat
@@ -626,6 +626,31 @@ def _advice_clusters(db, world: World, world_median: float) -> tuple[list[dict],
     )
 
 
+def _apply_term_merges(db, world: World) -> None:
+    """Phase 16: fold the LLM's merge decisions into canon_term, after the
+    embedding clustering has set it and before anything aggregates off it, so
+    merged groups get combined support for free. No world/facet check here —
+    scope is whatever rows are in topology.term_merges. Applied inside rollup()
+    because post_terms is rebuilt from vlm_json on every run; an UPDATE
+    anywhere else silently vanishes."""
+    n = db.execute(
+        text("""
+            UPDATE topology.post_terms pt
+               SET canon_term = m.canon_term
+              FROM topology.term_merges m
+             WHERE pt.world_id = :world_id
+               AND m.world_id  = pt.world_id
+               AND m.facet     = pt.facet
+               AND m.norm_term = pt.norm_term
+               AND pt.canon_term IS DISTINCT FROM m.canon_term
+        """),
+        {"world_id": world.id},
+    ).rowcount
+    db.commit()
+    if n:
+        print(f"  term_merges: {n} post_terms rows remapped")
+
+
 def rollup(db, world_slug: str) -> list[dict]:
     """The one entry point. Returns the stats rows it wrote, for callers
     (run_overview.py) that want to print a summary without a second query."""
@@ -633,6 +658,7 @@ def rollup(db, world_slug: str) -> list[dict]:
 
     _extract_and_store(db, world)
     canonicalize(db, world)
+    _apply_term_merges(db, world)
 
     median = world_median(db, world)
     by_account = account_medians(db, world)
