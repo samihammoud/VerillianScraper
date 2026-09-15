@@ -10,7 +10,7 @@ their own medoid.
 
 import numpy as np
 
-from src.services.overview import MEMBER_COSINE_FLOOR, PREMISE_MIN_ACCOUNTS, PREMISE_MIN_POSTS
+from src.analysis.topology.overview import MEMBER_COSINE_FLOOR, PREMISE_MIN_ACCOUNTS, PREMISE_MIN_POSTS
 
 
 def _survives(sub_sim: np.ndarray, account_ids: list[str]) -> int | None:

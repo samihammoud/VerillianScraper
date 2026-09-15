@@ -34,7 +34,7 @@ tuning sweep re-running the same embed call on every invocation is pure
 waste) and re-clusters/re-reduces that same matrix under every parameter
 setting.
 
-Usage: python -m src.services.phase9.tune_premise_threshold romance
+Usage: python -m src.analysis.topology.phase9.tune_premise_threshold romance
 """
 
 import hashlib
@@ -50,7 +50,7 @@ from src.db.models import Post, World, WorldPost
 from src.db.session import SessionLocal
 from src.services.embeddings import embed_batch
 from src.services.linalg import l2_normalize
-from src.services.overview import _dedupe_map, _premise_text, world_by_slug
+from src.analysis.topology.overview import _dedupe_map, _premise_text, world_by_slug
 
 # Target scaled off the doc's "roughly 60-150 clusters over ~10k posts" —
 # proportional to whatever corpus size this actually runs against, not a

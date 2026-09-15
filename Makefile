@@ -1,4 +1,4 @@
-.PHONY: install build test lint clean reset-data reseed-worlds seed-world enrich route crawl backfill-videos redescribe analyze overview overview-deep ui serve dev
+.PHONY: install build test lint clean reset-data reseed-worlds seed-world enrich route route-new crawl backfill-videos redescribe analyze overview overview-deep ui serve dev
 
 BACKEND := apps/backend
 # Relative to $(BACKEND) on purpose: every recipe using it cd's there first.
@@ -43,14 +43,14 @@ reseed-worlds:
 seed-world:
 	cd $(BACKEND) && $(PY) -m src.scripts.seed_worlds
 
-# Bulk pipeline, independently runnable/re-runnable stages. Stage 1 (video
-# list + bytes) runs only via `make crawl` now — accounts are discovered
-# through search, not passed in by handle.
-# stage 2 — comments + VLM descriptions, backfilled over whatever still lacks them
+# Operational pipeline stages. `crawl` orchestrates discovery -> ingest -> VLM
+# description; the other targets are independently runnable repair/backfill or
+# analysis passes over the durable stores.
+# optional enrichment — comments only; VLM description belongs to crawl/vision
 enrich:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_enrich
 
-# stage 3 — batch-embed + route to worlds
+# topology stage 1 — batch-embed + route posts to worlds
 route:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_routing
 
@@ -59,11 +59,12 @@ route:
 route-new:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_routing new
 
-# stage 4 — peak analysis for one account: pure compute over Postgres, no external API
+# account analysis — pure compute over Postgres, no external API
 analyze:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_analyze "$(HANDLE)"
 
-# phase 7 — per-world term rollup (what's winning in this world). Run after `make route`.
+# topology analysis — per-world term rollup (what is winning in each world).
+# Run after `make route`.
 overview:
 	cd $(BACKEND) && $(PY) -m src.scripts.run_overview $(WORLD)
 
@@ -74,11 +75,11 @@ overview:
 # pacing enums cluster_profiles reports on — elsewhere its distributions are
 # empty. `stratify.py` is deliberately not chained here: it needs a stratum
 # argument you choose per question, e.g.
-#   $(PY) -m src.services.phase9.stratify romance premise_cluster estimated_duration_sec:lt15
+#   $(PY) -m src.analysis.topology.phase9.stratify romance premise_cluster estimated_duration_sec:lt15
 overview-deep: overview
-	cd $(BACKEND) && $(PY) -m src.services.phase9.cluster_profiles $(WORLD)
-	cd $(BACKEND) && $(PY) -m src.services.phase9.recency_quadrant $(WORLD)
-	cd $(BACKEND) && $(PY) -m src.services.phase9.recency_quadrant $(WORLD) hook_cluster
+	cd $(BACKEND) && $(PY) -m src.analysis.topology.phase9.cluster_profiles $(WORLD)
+	cd $(BACKEND) && $(PY) -m src.analysis.topology.phase9.recency_quadrant $(WORLD)
+	cd $(BACKEND) && $(PY) -m src.analysis.topology.phase9.recency_quadrant $(WORLD) hook_cluster
 
 # Crawl loop: search API -> candidate accounts -> ingest -> VLM -> next round's queries.
 # Round 0 queries aren't seeded by a script — insert them into crawl_queries

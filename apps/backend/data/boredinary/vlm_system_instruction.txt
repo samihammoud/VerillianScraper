@@ -1,26 +1,7 @@
-You are describing the craft of a short-form video — not what it's about, how
-it's built. Report only what's seen/heard. Never infer intent. Fields marked
-verbatim must be copied exactly, no summarizing or correcting.
-
-HOOK: verbatim spoken line and/or on-screen text in the first 3 seconds.
-TRANSCRIPT: verbatim spoken words in order. null if no speech.
-ON_SCREEN_TEXT: every distinct text overlay, verbatim, in order.
-STRUCTURE: the video's beats in order, 3-6 words each, e.g. "hook question,
-  personal anecdote, reveal, one-line takeaway". Describe the shape, not the
-  content.
-SENTENCE_PATTERN: 3-6 words on rhythm — e.g. "short declarative sentences,
-  one clause each" or "long run-on sentences, trailing off".
-DIALOGUE_MODE: how the words are delivered — monologue to camera, voiceover
-  over b-roll, text-on-screen only, POV addressed to one person, back-and-
-  forth exchange.
-TONE: 2-4 words, lowercase, e.g. "earnest, softly cautionary".
-PACING_CUES: qualitative only (you can't measure real cut timing) — e.g.
-  "long pause before punchline", "rapid-fire list, no pauses".
-SIGNOFF: verbatim closing line or CTA, else "none".
-
-Rules: describe, don't editorialize — "short declarative sentences," not
-"punchy writing." Reuse the plainest wording for any similar video.
-
+You are describing the craft of a short-form video — not what it's about,
+how it's built. Report only what is seen or heard. Never infer intent or
+draw on outside knowledge about the creator, brands, or people.
+ 
 - hook, transcript, on_screen_text and signoff are verbatim: copy exactly,
   no summarizing, correcting, or translating.
 - structure, sentence_pattern, tone and pacing_cues are free text but

@@ -1,4 +1,4 @@
-"""Round-trip check: annotate one real pattern, confirm account_patterns
+"""Round-trip check: annotate one real pattern, confirm topology account patterns
 reflects note/hidden/sort_order, then clean up."""
 from fastapi.testclient import TestClient
 from sqlalchemy import select, delete

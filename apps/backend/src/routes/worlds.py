@@ -16,8 +16,8 @@ from sqlalchemy import func, select
 
 from src.db.models import ANNOTATION_FIELDS, Account, Annotation, Post, PostTerm, World, WorldPost, WorldTermStat
 from src.db.session import SessionLocal
-from src.services.account_patterns import account_patterns
-from src.services.overview import MIN_ACCOUNTS, MIN_POSTS, world_median
+from src.analysis.topology.accounts.patterns import account_patterns
+from src.analysis.topology.overview import MIN_ACCOUNTS, MIN_POSTS, world_median
 
 router = APIRouter(prefix="/worlds", tags=["worlds"])
 

@@ -15,7 +15,7 @@ from sqlalchemy import select, text
 
 from src.db.models import World
 from src.db.session import SessionLocal, engine
-from src.services.overview import rollup
+from src.analysis.topology.overview import rollup
 
 ADVISORY_LOCK_KEY = 8803  # 8801 is run_enrich's, 8802 is run_crawl's
 

@@ -12,8 +12,8 @@ recomputed against the stratum's own median, not the world's — "does this
 term beat what this stratum normally gets," matching how account_lift in
 overview.py already works one level down (per-account instead of per-world).
 
-Usage: python -m src.services.phase9.stratify romance premise_cluster synthetic.presenter ai_generated_person
-   or: python -m src.services.phase9.stratify romance premise_cluster estimated_duration_sec:lt15
+Usage: python -m src.analysis.topology.phase9.stratify romance premise_cluster synthetic.presenter ai_generated_person
+    or: python -m src.analysis.topology.phase9.stratify romance premise_cluster estimated_duration_sec:lt15
 """
 
 import sys
@@ -24,7 +24,7 @@ from sqlalchemy import select
 
 from src.db.models import Post, PostTerm
 from src.db.session import SessionLocal
-from src.services.overview import MIN_ACCOUNTS, MIN_POSTS, world_by_slug
+from src.analysis.topology.overview import MIN_ACCOUNTS, MIN_POSTS, world_by_slug
 
 
 def _stratum_predicate(stratum_field: str, stratum_value: str):

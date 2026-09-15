@@ -26,8 +26,8 @@ updated. Depends on post_terms already containing rows for `facet` (i.e.
 `make overview` already ran) — this is a second pass over that output, not
 part of rollup() itself.
 
-Usage: python -m src.services.phase9.cluster_profiles romance
-   or: python -m src.services.phase9.cluster_profiles romance hook_cluster
+Usage: python -m src.analysis.topology.phase9.cluster_profiles romance
+    or: python -m src.analysis.topology.phase9.cluster_profiles romance hook_cluster
 """
 
 import sys
@@ -39,7 +39,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from src.db.models import ClusterProfile, Post, PostTerm
 from src.db.session import SessionLocal
-from src.services.overview import world_by_slug
+from src.analysis.topology.overview import world_by_slug
 
 # The enum facets worth profiling per cluster — mirrors terms.py's RAW_FACETS
 # for the romance schema layer, read straight from vlm_json rather than

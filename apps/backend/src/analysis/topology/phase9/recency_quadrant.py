@@ -19,8 +19,8 @@ VOLUME_HIGH_THRESHOLD is a rough split, not tuned against this corpus the way
 PREMISE_MIN_CLUSTER_SIZE was — eyeball the actual recent_n distribution
 printed here before trusting the quadrant label on a borderline cluster.
 
-Usage: python -m src.services.phase9.recency_quadrant romance
-   or: python -m src.services.phase9.recency_quadrant romance hook_cluster
+Usage: python -m src.analysis.topology.phase9.recency_quadrant romance
+    or: python -m src.analysis.topology.phase9.recency_quadrant romance hook_cluster
 """
 
 import sys
@@ -32,7 +32,7 @@ from sqlalchemy import select
 
 from src.db.models import Post, PostTerm
 from src.db.session import SessionLocal
-from src.services.overview import world_by_slug, world_median
+from src.analysis.topology.overview import world_by_slug, world_median
 
 RECENCY_DAYS = 30
 VOLUME_HIGH_THRESHOLD = 15  # posts in the recent window alone

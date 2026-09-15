@@ -16,8 +16,8 @@ import numpy as np
 from sqlalchemy import select
 
 from src.db.models import Account, Annotation, Post, WorldPost
-from src.services.clustering import DEFAULT_SIMILARITY_THRESHOLD, cluster_by_threshold, cosine_similarity_matrix, label_cluster
-from src.services.peaks import compute_metrics, find_peaks
+from src.analysis.clustering import DEFAULT_SIMILARITY_THRESHOLD, cluster_by_threshold, cosine_similarity_matrix, label_cluster
+from src.analysis.peaks import compute_metrics, find_peaks
 
 
 def _account_video_url(handle: str, external_id: str) -> str:

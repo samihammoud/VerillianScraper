@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from src.db.models import Account, Post, WorldPost
 from src.db.session import SessionLocal
-from src.services.clustering import (
+from src.analysis.clustering import (
     DEFAULT_SIMILARITY_THRESHOLD,
     cluster_by_threshold,
     cosine_similarity_matrix,
@@ -29,7 +29,7 @@ from src.services.clustering import (
     topics,
 )
 from src.services.csv_export import write_timestamped_csv
-from src.services.peaks import Peak, compute_metrics, find_peaks
+from src.analysis.peaks import Peak, compute_metrics, find_peaks
 
 CSV_COLUMNS = [
     "cluster_id",

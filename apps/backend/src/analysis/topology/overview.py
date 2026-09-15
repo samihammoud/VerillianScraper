@@ -19,10 +19,10 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from src.db.models import Post, PostTerm, TermEmbedding, World, WorldPost, WorldTermStat
-from src.services.clustering import cluster_by_threshold, cosine_similarity_matrix
+from src.analysis.clustering import cluster_by_threshold, cosine_similarity_matrix
 from src.services.embeddings import embed_batch
 from src.services.linalg import l2_normalize
-from src.services.terms import CLUSTERED_FACETS, RAW_FACETS, extract_scrape_terms, extract_terms, normalize
+from src.analysis.topology.terms import CLUSTERED_FACETS, RAW_FACETS, extract_scrape_terms, extract_terms, normalize
 
 # Retuned 2026-09-10 alongside the single-link -> average-linkage swap in
 # _canonicalize_facet. 0.86 was tuned against single-link's chaining behaviour and
@@ -52,7 +52,7 @@ PREMISE_DEDUPE_THRESHOLD = 0.97  # reposted/re-voiced clips, per the doc — col
 PREMISE_MIN_POSTS = 8
 PREMISE_MIN_ACCOUNTS = 5  # raised vs. MIN_ACCOUNTS: farmed romance content needs a harder floor
 
-# Swept twice in src/services/phase9/tune_premise_threshold.py against the real romance corpus
+# Swept twice in src/analysis/topology/phase9/tune_premise_threshold.py against the real romance corpus
 # (2026-09-03). cluster_by_threshold (single-link/connected-components) was tried first and
 # ruled out — every threshold from 0.74-0.90 was either a couple of giant blobs (bridge posts
 # chain-merging distinct situations into one 100-200 post cluster) or near-total singleton
